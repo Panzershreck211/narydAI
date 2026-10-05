@@ -1,0 +1,6 @@
+# Единые окончания строк в репозитории (LF) — важно для Docker-образов и скриптов
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary

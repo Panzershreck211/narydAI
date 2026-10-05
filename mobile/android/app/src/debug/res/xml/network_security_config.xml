@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug: http к любому хосту — для отладки с телефона по Wi-Fi -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

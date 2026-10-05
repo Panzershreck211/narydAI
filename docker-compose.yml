@@ -1,0 +1,37 @@
+# Имя проекта фиксировано — не зависит от названия папки
+name: naryad-ai
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: naryad
+      POSTGRES_USER: naryad
+      POSTGRES_PASSWORD: naryad
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U naryad"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://naryad:naryad@db:5432/naryad
+    ports: ["8000:8000"]
+    volumes: [media:/app/media]
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: ./web
+    ports: ["8080:80"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  media:

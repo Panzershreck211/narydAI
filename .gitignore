@@ -1,0 +1,26 @@
+# Секреты и локальные данные — не публиковать
+backend/.env
+*.local.md
+backend/media/
+
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.db
+
+# Web
+web/node_modules/
+web/dist/
+
+# Flutter (основные правила — в mobile/.gitignore)
+mobile/build/
+mobile/.dart_tool/
+
+# Локальные настройки редакторов и инструментов
+.claude/
+.idea/
+.vscode/
+*.log
