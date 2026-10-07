@@ -20,7 +20,6 @@ mobile/build/
 mobile/.dart_tool/
 
 # Локальные настройки редакторов и инструментов
-.claude/
 .idea/
 .vscode/
 *.log
