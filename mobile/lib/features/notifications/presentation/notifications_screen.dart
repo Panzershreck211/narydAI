@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/widgets/common.dart';
 
@@ -23,10 +24,10 @@ class NotificationsScreen extends ConsumerWidget {
     final dio = ref.read(dioProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Уведомления'),
+        title: Text(tr('Уведомления')),
         actions: [
           IconButton(
-            tooltip: 'Прочитать все',
+            tooltip: tr('Прочитать все'),
             icon: const Icon(Icons.done_all),
             onPressed: () async {
               await dio.post('/notifications/read-all');
@@ -39,7 +40,7 @@ class NotificationsScreen extends ConsumerWidget {
         value: ref.watch(notificationsProvider),
         onRetry: () => ref.invalidate(notificationsProvider),
         data: (items) => items.isEmpty
-            ? const Center(child: Text('Уведомлений нет'))
+            ? Center(child: Text(tr('Уведомлений нет')))
             : ListView.separated(
                 itemCount: items.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),

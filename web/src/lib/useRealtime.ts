@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
 
 import { tokens } from '../api/client'
 import { qk } from '../api/hooks'
 import type { Notification } from '../api/types'
 import { useToast } from '../components/useToast'
+import { getLang } from '../i18n/lang'
+import { useOpenOrder } from './useOpenOrder'
 
 export type RealtimeState = 'connecting' | 'online' | 'offline'
 
@@ -17,14 +18,9 @@ export type RealtimeState = 'connecting' | 'online' | 'offline'
 export function useRealtime(enabled: boolean): RealtimeState {
   const qc = useQueryClient()
   const toast = useToast()
-  const [, setParams] = useSearchParams()
   const [state, setState] = useState<RealtimeState>('connecting')
-  const openOrder = useRef((id: number) =>
-    setParams((p) => {
-      p.set('order', String(id))
-      return p
-    }),
-  )
+  // Ссылка на «открыть наряд» не должна пересоздавать соединение при каждом рендере
+  const openOrder = useRef(useOpenOrder())
 
   useEffect(() => {
     if (!enabled) return
@@ -39,7 +35,7 @@ export function useRealtime(enabled: boolean): RealtimeState {
       if (!token || stopped) return
       setState('connecting')
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`)
+      ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}&lang=${getLang()}`)
 
       ws.onopen = () => {
         attempt = 0

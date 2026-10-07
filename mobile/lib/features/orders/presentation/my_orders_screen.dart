@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../assistant/presentation/assistant_screen.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
 import '../../auth/application/auth_controller.dart';
@@ -22,6 +24,8 @@ class MyOrdersScreen extends ConsumerWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        // ИИ-помощник — внизу справа, как в веб-панели
+        floatingActionButton: const AssistantButton(),
         appBar: AppBar(
           titleSpacing: 16,
           title: BrandMark(
@@ -30,13 +34,14 @@ class MyOrdersScreen extends ConsumerWidget {
                 : '${user.shortName} · ${user.specialty ?? 'исполнитель'}',
           ),
           actions: [
+            const LangMenuButton(),
             IconButton(
-              tooltip: 'Уведомления',
+              tooltip: tr('Уведомления'),
               icon: const Icon(Icons.notifications_outlined),
               onPressed: () => context.push('/notifications'),
             ),
             IconButton(
-              tooltip: 'Выйти',
+              tooltip: tr('Выйти'),
               icon: const Icon(Icons.logout),
               onPressed: () =>
                   ref.read(authControllerProvider.notifier).logout(),
@@ -52,10 +57,10 @@ class MyOrdersScreen extends ConsumerWidget {
             },
             Container(
               color: c.bg,
-              child: const TabBar(
+              child: TabBar(
                 tabs: [
-                  Tab(text: 'Активные'),
-                  Tab(text: 'Выполненные'),
+                  Tab(text: tr('Активные')),
+                  Tab(text: tr('Выполненные')),
                 ],
               ),
             ),
@@ -116,7 +121,9 @@ class _ShiftBar extends ConsumerWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              onShift ? 'На смене — наряды приходят вам' : 'Не на смене',
+              onShift
+                  ? tr('На смене — наряды приходят вам')
+                  : tr('Не на смене'),
               style: TextStyle(
                 color: onShift ? c.text : c.muted,
                 fontWeight: FontWeight.w500,
@@ -194,14 +201,14 @@ class _Stats extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
       child: Row(
         children: [
-          stat('Активные', active.length, c.grey),
+          stat(tr('Активные'), active.length, c.grey),
           stat(
-            'В работе',
+            tr('В работе'),
             active.where((o) => o.status == OrderStatus.inProgress).length,
             c.amber,
           ),
           stat(
-            'Просрочено',
+            tr('Просрочено'),
             active.where((o) => o.isOverdue).length,
             c.red,
             alarm: true,
@@ -228,12 +235,16 @@ class _OrdersList extends ConsumerWidget {
                 Icon(Icons.inbox_outlined, size: 40, color: c.muted),
                 const SizedBox(height: 8),
                 Center(
-                  child: Text('Нарядов нет', style: TextStyle(color: c.muted)),
+                  child: Text(
+                    tr('Нарядов нет'),
+                    style: TextStyle(color: c.muted),
+                  ),
                 ),
               ],
             )
           : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              // снизу место под кнопку «Помощник»
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
               itemCount: orders.length,
               itemBuilder: (_, i) => OrderCard(
                 order: orders[i],

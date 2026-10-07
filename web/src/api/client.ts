@@ -1,4 +1,5 @@
 import type { TokenPair } from './types'
+import { getLang, t } from '../i18n/lang'
 
 const PREFIX = '/api/v1'
 const ACCESS = 'naryad.access'
@@ -36,7 +37,7 @@ export function setSessionExpiredHandler(fn: () => void) {
 }
 
 async function parseError(res: Response): Promise<ApiError> {
-  let message = `Ошибка сервера (${res.status})`
+  let message = t('Ошибка сервера ({status})', { status: res.status })
   try {
     const body = await res.json()
     if (typeof body.detail === 'string') message = body.detail
@@ -96,6 +97,8 @@ export async function api<T>(path: string, opts: RequestOptions = {}, retried = 
   const isForm = opts.body instanceof FormData
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
   if (opts.auth !== false && tokens.access) headers.Authorization = `Bearer ${tokens.access}`
+  // сервер отдаёт свои тексты (ошибки, уведомления, журнал) на языке интерфейса
+  headers['Accept-Language'] = getLang()
 
   let res: Response
   try {
@@ -105,7 +108,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}, retried = 
       body: opts.body === undefined ? undefined : isForm ? (opts.body as FormData) : JSON.stringify(opts.body),
     })
   } catch {
-    throw new ApiError(0, 'Нет связи с сервером')
+    throw new ApiError(0, t('Нет связи с сервером'))
   }
 
   if (res.status === 401 && opts.auth !== false && !retried) {

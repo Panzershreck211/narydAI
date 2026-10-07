@@ -18,11 +18,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismiss = useCallback((id: number) => setItems((xs) => xs.filter((x) => x.id !== id)), [])
 
   const push = useCallback<Push>(
-    (t) => {
+    (toast) => {
       const id = ++seq
-      setItems((xs) => [...xs.slice(-4), { ...t, id }])
+      setItems((xs) => [...xs.slice(-4), { ...toast, id }])
       // Аварийные висят дольше
-      setTimeout(() => dismiss(id), t.kind === 'emergency' ? 15_000 : 5_000)
+      setTimeout(() => dismiss(id), toast.kind === 'emergency' ? 15_000 : 5_000)
     },
     [dismiss],
   )
@@ -32,18 +32,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext value={value}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {items.map((t) => (
+        {items.map((toast) => (
           <button
-            key={t.id}
+            key={toast.id}
             type="button"
-            className={`toast toast--${t.kind}`}
+            className={`toast toast--${toast.kind}`}
             onClick={() => {
-              t.onClick?.()
-              dismiss(t.id)
+              toast.onClick?.()
+              dismiss(toast.id)
             }}
           >
-            <strong>{t.title}</strong>
-            {t.body && <span>{t.body}</span>}
+            <strong>{toast.title}</strong>
+            {toast.body && <span>{toast.body}</span>}
           </button>
         ))}
       </div>

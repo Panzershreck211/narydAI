@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.i18n import Localized, LocalizedChecks, field_label
 from app.models.enums import (
     AIVerdict,
     OrderAction,
@@ -30,7 +31,7 @@ class OrderCreate(BaseModel):
         if self.executor_id is None and self.brigade_id is None:
             raise ValueError("Укажите исполнителя или бригаду")
         if self.deadline.tzinfo is None:
-            raise ValueError("deadline должен содержать часовой пояс (ISO 8601 с offset)")
+            raise ValueError("Срок должен содержать часовой пояс (ISO 8601 со смещением)")
         return self
 
 
@@ -40,6 +41,14 @@ class OrderUpdate(BaseModel):
     priority: Priority | None = None
     deadline: datetime | None = None
     equipment_stopped: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_null_for_required(self):
+        # PATCH: поле можно не передавать, но «очистить» обязательное поле нельзя
+        nulls = sorted(k for k in self.model_fields_set - {"equipment_id"} if getattr(self, k) is None)
+        if nulls:
+            raise ValueError(f"Поля не могут быть пустыми: {', '.join(field_label(k, 'ru') for k in nulls)}")
+        return self
 
 
 class ReasonIn(BaseModel):
@@ -62,7 +71,7 @@ class MaterialUse(BaseModel):
     @model_validator(mode="after")
     def _name(self):
         if self.material_id is None and not self.material_name:
-            raise ValueError("Укажите material_id из справочника или material_name")
+            raise ValueError("Укажите материал из справочника или его название")
         return self
 
 
@@ -86,7 +95,7 @@ class EventOut(BaseModel):
     action: OrderAction
     from_status: OrderStatus | None
     to_status: OrderStatus | None
-    reason: str | None
+    reason: Localized | None
     timestamp: datetime
     user: UserShort | None
 
@@ -118,8 +127,8 @@ class AIReportOut(BaseModel):
     verdict: AIVerdict
     score: float
     photo_score: float | None
-    explanation: str
-    checks: list | None
+    explanation: Localized
+    checks: LocalizedChecks
     source: str
     created_at: datetime
 
@@ -160,7 +169,7 @@ class OrderDetail(OrderOut):
 
 class BoardColumn(BaseModel):
     key: str
-    title: str
+    title: Localized
     orders: list[OrderOut]
 
 

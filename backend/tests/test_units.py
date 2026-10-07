@@ -266,3 +266,11 @@ def test_blank_image_is_flagged_as_blurry(tmp_path):
     assert pc.score <= 3
 
 
+
+
+def test_human_minutes():
+    from app.services.ai.deadline_monitor import human_minutes
+
+    assert human_minutes(2374) == "39 ч 34 мин"
+    assert human_minutes(45) == "45 мин"
+    assert human_minutes(0) == "0 мин"

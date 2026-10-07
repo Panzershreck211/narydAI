@@ -14,23 +14,24 @@ import { ReferencesPage } from './pages/ReferencesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupPage } from './pages/SetupPage'
 import { UsersPage } from './pages/UsersPage'
+import { t } from './i18n/lang'
 
 const HOME: Record<Role, string> = { master: '/board', manager: '/analytics', admin: '/board', executor: '/login' }
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading, error, retry, logout } = useAuth()
-  if (loading) return <Spinner label="Подключение к серверу…" />
+  if (loading) return <Spinner label={t('Подключение к серверу…')} />
   if (!user && error) {
     return (
       <div className="login">
         <div className="login__card">
-          <b>Нет связи с сервером</b>
-          <span className="muted">{error}. Вход сохранён — повторите, когда сервер будет доступен.</span>
+          <b>{t('Нет связи с сервером')}</b>
+          <span className="muted">{error}. {t('Вход сохранён — повторите, когда сервер будет доступен.')}</span>
           <button type="button" className="btn btn--primary btn--block" onClick={retry}>
-            Повторить
+            {t('Повторить')}
           </button>
           <button type="button" className="btn btn--ghost btn--block" onClick={logout}>
-            Войти под другим пользователем
+            {t('Войти под другим пользователем')}
           </button>
         </div>
       </div>

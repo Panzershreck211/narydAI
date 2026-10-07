@@ -27,15 +27,3 @@ final orderDetailProvider = FutureProvider.autoDispose.family<OrderDetail, int>(
     return ref.watch(ordersRepositoryProvider).get(id);
   },
 );
-
-final boardProvider = FutureProvider.autoDispose<Map<String, List<WorkOrder>>>((
-  ref,
-) {
-  _refreshOnRealtime(ref);
-  return ref.watch(ordersRepositoryProvider).board();
-});
-
-final countersProvider = FutureProvider.autoDispose<Map<String, int>>((ref) {
-  _refreshOnRealtime(ref);
-  return ref.watch(ordersRepositoryProvider).counters();
-});

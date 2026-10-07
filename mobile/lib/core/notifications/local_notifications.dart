@@ -4,6 +4,8 @@ import 'dart:ui';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../i18n/i18n.dart';
+
 /// Системные уведомления. Аварийные наряды — отдельный канал с красным цветом
 /// и максимальной важностью (звук, heads-up).
 ///
@@ -15,20 +17,22 @@ class LocalNotifications {
   final _plugin = FlutterLocalNotificationsPlugin();
   final _taps = StreamController<int>.broadcast();
 
-  static const _orders = AndroidNotificationChannel(
+  // Названия каналов видны в настройках телефона — на языке интерфейса
+  static AndroidNotificationChannel get _orders => AndroidNotificationChannel(
     'orders',
-    'Наряды',
-    description: 'Новые наряды и изменения статусов',
+    tr('Наряды'),
+    description: tr('Новые наряды и изменения статусов'),
     importance: Importance.high,
   );
-  static const _emergency = AndroidNotificationChannel(
-    'emergency',
-    'Аварийные наряды',
-    description: 'Аварийные наряды и просрочки',
-    importance: Importance.max,
-    ledColor: Color(0xFFD32F2F),
-    enableLights: true,
-  );
+  static AndroidNotificationChannel get _emergency =>
+      AndroidNotificationChannel(
+        'emergency',
+        tr('Аварийные наряды'),
+        description: tr('Аварийные наряды и просрочки'),
+        importance: Importance.max,
+        ledColor: Color(0xFFD32F2F),
+        enableLights: true,
+      );
 
   /// id наряда, по уведомлению о котором тапнули.
   Stream<int> get taps => _taps.stream;

@@ -3,6 +3,8 @@ import { Navigate } from 'react-router'
 
 import { useSetupStatus } from '../api/hooks'
 import { useAuth } from '../auth/useAuth'
+import { t } from '../i18n/lang'
+import { LangSwitch } from '../i18n/LangSwitch'
 
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -23,7 +25,7 @@ export function LoginPage() {
     try {
       await login(form.login.trim(), form.password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка входа')
+      setError(err instanceof Error ? err.message : t('Ошибка входа'))
     } finally {
       setPending(false)
     }
@@ -31,16 +33,17 @@ export function LoginPage() {
 
   return (
     <div className="login">
+      <LangSwitch />
       <form className="login__card" onSubmit={submit}>
         <div className="brand brand--big">
           <span className="brand__logo">Н</span>
           <span>
             НарядAI
-            <small>Панель мастера и руководства</small>
+            <small>{t('Панель мастера и руководства')}</small>
           </span>
         </div>
         <label className="field">
-          <span className="field__label">Логин</span>
+          <span className="field__label">{t('Логин')}</span>
           <input
             value={form.login}
             onChange={(e) => setForm({ ...form, login: e.target.value })}
@@ -50,7 +53,7 @@ export function LoginPage() {
           />
         </label>
         <label className="field">
-          <span className="field__label">Пароль</span>
+          <span className="field__label">{t('Пароль')}</span>
           <input
             type="password"
             value={form.password}
@@ -61,7 +64,7 @@ export function LoginPage() {
         </label>
         {error && <div className="error-box">{error}</div>}
         <button type="submit" className="btn btn--primary btn--block" disabled={pending}>
-          {pending ? 'Вход…' : 'Войти'}
+          {pending ? t('Вход…') : t('Войти')}
         </button>
       </form>
     </div>

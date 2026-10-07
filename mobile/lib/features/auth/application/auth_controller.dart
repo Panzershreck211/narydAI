@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_error.dart';
+import '../../../core/i18n/i18n.dart';
 import '../data/auth_repository.dart';
 import '../domain/app_user.dart';
 
@@ -12,7 +14,13 @@ class AuthController extends AsyncNotifier<AppUser?> {
   Future<AppUser?> build() async {
     ref.read(apiClientProvider).onSessionExpired = () =>
         state = const AsyncData(null);
-    return _repo.restore();
+    final user = await _repo.restore();
+    // сохранённая сессия мастера/руководителя (старая версия приложения) — сбрасываем
+    if (user != null && user.role != Role.executor) {
+      await _repo.logout();
+      return null;
+    }
+    return user;
   }
 
   Future<void> login(String login, String password) =>
@@ -23,7 +31,17 @@ class AuthController extends AsyncNotifier<AppUser?> {
 
   Future<void> _run(Future<AppUser> Function() action) async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(action);
+    state = await AsyncValue.guard(() async => _executorOnly(await action()));
+  }
+
+  Future<AppUser> _executorOnly(AppUser user) async {
+    if (user.role == Role.executor) return user;
+    await _repo.logout();
+    throw ApiError(
+      tr(
+        'Приложение — только для исполнителей. Мастер, руководитель и администратор работают в веб-панели.',
+      ),
+    );
   }
 
   Future<void> setShift(bool onShift) async {

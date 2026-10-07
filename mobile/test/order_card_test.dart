@@ -34,12 +34,11 @@ Future<void> _pump(
   WidgetTester tester,
   WorkOrder order, {
   VoidCallback? onTap,
-  bool compact = false,
 }) => tester.pumpWidget(
   MaterialApp(
     theme: AppTheme.dark(),
     home: Scaffold(
-      body: OrderCard(order: order, onTap: onTap, compact: compact),
+      body: OrderCard(order: order, onTap: onTap),
     ),
   ),
 );
@@ -74,11 +73,6 @@ void main() {
           w.constraints?.maxWidth == 4,
     );
     expect(strip, findsOneWidget);
-  });
-
-  testWidgets('компактный вид на доске показывает исполнителя', (tester) async {
-    await _pump(tester, _order(), compact: true);
-    expect(find.text('Иванов Сергей Николаевич'), findsOneWidget);
   });
 
   testWidgets('тап открывает наряд', (tester) async {

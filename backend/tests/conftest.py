@@ -9,7 +9,8 @@ _tmp = Path(tempfile.mkdtemp(prefix="naryad_test_"))
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite+aiosqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["MEDIA_DIR"] = str(_tmp / "media")
 os.environ["AI_MONITOR_ENABLED"] = "false"
-os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["JWT_SECRET"] = "test-secret-" + "x" * 40
+os.environ["GEMINI_API_KEY"] = ""
 
 import pytest  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

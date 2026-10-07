@@ -6,26 +6,32 @@ import { api } from '../api/client'
 import { useUser } from '../auth/useAuth'
 import { ORDER_RE, streamChat, type ChatTurn } from '../lib/assistant'
 import { useOpenOrder } from '../lib/useOpenOrder'
+import { t, tRich } from '../i18n/lang'
 
-const STORAGE_KEY = 'naryad.assistant.history'
+// История — своя у каждого пользователя: после выхода мастера вошедший в том же браузере
+// администратор не должен видеть чужую переписку
+const storageKey = (userId: number) => `naryad.assistant.history.${userId}`
+// Модели нужен недавний контекст, а не вся переписка — так запрос не упирается в лимиты сервера
+const CONTEXT_TURNS = 20
 
+// Подсказки — ключи перевода, переводятся при отрисовке
 const SUGGESTIONS: Record<string, string[]> = {
   master: ['Что сейчас просрочено?', 'Кто из исполнителей свободен?', 'Сводка по смене', 'Есть аварийные наряды?'],
   manager: ['Сводка по смене', 'Топ-3 исполнителя за месяц', 'Какое оборудование чаще простаивает?', 'Что просрочено?'],
   admin: ['Как зарегистрировать сотрудника?', 'Как добавить оборудование?', 'Сводка по смене', 'Кто свободен?'],
 }
 
-function loadHistory(): ChatTurn[] {
+function loadHistory(userId: number): ChatTurn[] {
   try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '[]') as ChatTurn[]
+    return JSON.parse(sessionStorage.getItem(storageKey(userId)) ?? '[]') as ChatTurn[]
   } catch {
     return []
   }
 }
 
-function saveHistory(turns: ChatTurn[]) {
+function saveHistory(userId: number, turns: ChatTurn[]) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(turns.slice(-40)))
+    sessionStorage.setItem(storageKey(userId), JSON.stringify(turns.slice(-40)))
   } catch {
     /* приватный режим — просто не сохраняем */
   }
@@ -68,7 +74,7 @@ export function AssistantChat() {
   const user = useUser()
   const openOrder = useOpenOrder()
   const [open, setOpen] = useState(false)
-  const [turns, setTurns] = useState<ChatTurn[]>(loadHistory)
+  const [turns, setTurns] = useState<ChatTurn[]>(() => loadHistory(user.id))
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [activity, setActivity] = useState<string | null>(null)
@@ -84,7 +90,7 @@ export function AssistantChat() {
     staleTime: 30_000,
   })
 
-  useEffect(() => saveHistory(turns), [turns])
+  useEffect(() => saveHistory(user.id, turns), [user.id, turns])
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [turns, activity, open])
@@ -100,7 +106,7 @@ export function AssistantChat() {
     setDraft('')
     setError(null)
     setStreaming(true)
-    setActivity('Думаю')
+    setActivity(t('Думаю'))
     abort.current = new AbortController()
 
     const append = (chunk: string) =>
@@ -111,7 +117,7 @@ export function AssistantChat() {
 
     try {
       await streamChat(
-        history,
+        history.slice(-CONTEXT_TURNS),
         (e) => {
           if (e.type === 'text') {
             setActivity(null)
@@ -155,8 +161,8 @@ export function AssistantChat() {
 
   if (!open) {
     return (
-      <button type="button" className="assistant-fab" onClick={() => setOpen(true)} aria-label="Открыть ИИ-помощника">
-        <span aria-hidden>✦</span> Помощник
+      <button type="button" className="assistant-fab" onClick={() => setOpen(true)} aria-label={t('Открыть ИИ-помощника')}>
+        <span aria-hidden>✦</span> {t('Помощник')}
       </button>
     )
   }
@@ -164,18 +170,18 @@ export function AssistantChat() {
   const notConfigured = status.data && !status.data.configured
 
   return (
-    <section className="assistant" aria-label="ИИ-помощник">
+    <section className="assistant" aria-label={t('ИИ-помощник')}>
       <header className="assistant__head">
         <div>
-          <b>✦ ИИ-помощник</b>
-          <small>Отвечает по данным НарядAI</small>
+          <b>{t('✦ ИИ-помощник')}</b>
+          <small>{t('Отвечает по данным НарядAI')}</small>
         </div>
         {turns.length > 0 && (
-          <button type="button" className="link" onClick={clear} title="Начать заново">
-            Очистить
+          <button type="button" className="link" onClick={clear} title={t('Начать заново')}>
+            {t('Очистить')}
           </button>
         )}
-        <button type="button" className="icon-btn" aria-label="Свернуть помощника" onClick={() => setOpen(false)}>
+        <button type="button" className="icon-btn" aria-label={t('Свернуть помощника')} onClick={() => setOpen(false)}>
           ✕
         </button>
       </header>
@@ -184,25 +190,27 @@ export function AssistantChat() {
         {notConfigured ? (
           <div className="assistant__empty">
             <p>
-              <b>Помощник ещё не подключён.</b>
+              <b>{t('Помощник ещё не подключён.')}</b>
             </p>
             {user.role === 'admin' ? (
               <p>
-                Добавьте ключ Claude в разделе{' '}
-                <Link to="/settings" onClick={() => setOpen(false)}>
-                  «Настройки»
-                </Link>{' '}
-                — это займёт минуту.
+                {tRich('Добавьте бесплатный ключ Gemini в разделе {link} — это займёт минуту.', {
+                  link: (
+                    <Link to="/settings" onClick={() => setOpen(false)}>
+                      «{t('Настройки')}»
+                    </Link>
+                  ),
+                })}
               </p>
             ) : (
-              <p>Попросите администратора добавить ключ Claude в разделе «Настройки».</p>
+              <p>{t('Попросите администратора добавить ключ Gemini в разделе «Настройки».')}</p>
             )}
           </div>
         ) : turns.length === 0 ? (
           <div className="assistant__empty">
-            <p>Спросите о нарядах, исполнителях, простоях или о том, как что-то сделать в системе.</p>
+            <p>{t('Спросите о нарядах, исполнителях, простоях или о том, как что-то сделать в системе.')}</p>
             <div className="assistant__suggest">
-              {(SUGGESTIONS[user.role] ?? SUGGESTIONS.master).map((s) => (
+              {(SUGGESTIONS[user.role] ?? SUGGESTIONS.master).map((s) => t(s)).map((s) => (
                 <button key={s} type="button" className="chip" onClick={() => void send(s)}>
                   {s}
                 </button>
@@ -210,9 +218,9 @@ export function AssistantChat() {
             </div>
           </div>
         ) : (
-          turns.map((t, i) => (
-            <div key={i} className={`bubble bubble--${t.role}`}>
-              {t.role === 'assistant' ? <RichText text={t.content} onOrder={openOrder} /> : t.content}
+          turns.map((turn, i) => (
+            <div key={i} className={`bubble bubble--${turn.role}`}>
+              {turn.role === 'assistant' ? <RichText text={turn.content} onOrder={openOrder} /> : turn.content}
             </div>
           ))
         )}
@@ -238,13 +246,13 @@ export function AssistantChat() {
           onKeyDown={onKey}
           rows={2}
           maxLength={4000}
-          placeholder={notConfigured ? 'Помощник не подключён' : 'Спросите… (Enter — отправить)'}
+          placeholder={notConfigured ? t('Помощник не подключён') : t('Спросите… (Enter — отправить)')}
           disabled={notConfigured}
-          aria-label="Вопрос помощнику"
+          aria-label={t('Вопрос помощнику')}
         />
         {streaming ? (
           <button type="button" className="btn btn--ghost" onClick={() => abort.current?.abort()}>
-            Стоп
+            {t('Стоп')}
           </button>
         ) : (
           <button type="submit" className="btn btn--primary" disabled={!draft.trim() || notConfigured}>

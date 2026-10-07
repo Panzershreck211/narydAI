@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.deps import DB, CurrentUser
-from app.core.security import create_token, decode_token, hash_secret, verify_secret
+from app.core.security import create_token, decode_token, hash_secret_async, verify_secret_async
 from app.db.base import utcnow
 from app.models import User
 from app.schemas.auth import (
@@ -39,7 +39,7 @@ async def _by_login(db: DB, login: str) -> User | None:
 
 async def _password_login(db: DB, login: str, password: str) -> TokenPair:
     user = await _by_login(db, login)
-    if user is None or not user.is_active or not verify_secret(password, user.password_hash):
+    if user is None or not user.is_active or not await verify_secret_async(password, user.password_hash):
         raise _bad_credentials
     return _tokens(user)
 
@@ -57,7 +57,11 @@ async def token_form(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: 
 
 @router.post("/pin-login", response_model=TokenPair, summary="Быстрый вход по ПИН-коду (для рабочих)")
 async def pin_login(body: PinLoginRequest, db: DB):
-    user = await _by_login(db, body.login)
+    # Блокировка строки: попытки по одному логину идут строго по очереди, поэтому
+    # параллельный перебор не обходит счётчик (в SQLite запись и так последовательна).
+    user = await db.scalar(
+        select(User).where(User.login == body.login.strip()).with_for_update(of=User).execution_options(populate_existing=True)
+    )
     if user is None or not user.is_active or user.pin_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный табельный номер или ПИН")
 
@@ -66,7 +70,7 @@ async def pin_login(body: PinLoginRequest, db: DB):
         wait = int((user.locked_until - now).total_seconds() // 60) + 1
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, f"Вход по ПИН заблокирован, повторите через {wait} мин")
 
-    if not verify_secret(body.pin, user.pin_hash):
+    if not await verify_secret_async(body.pin, user.pin_hash):
         user.failed_pin_attempts += 1
         if user.failed_pin_attempts >= settings.pin_max_attempts:
             user.locked_until = now + timedelta(minutes=settings.pin_lock_minutes)
@@ -99,9 +103,9 @@ async def me(user: CurrentUser):
 
 @router.post("/me/pin", status_code=status.HTTP_204_NO_CONTENT, summary="Установить/сменить свой ПИН")
 async def set_pin(body: SetPinRequest, user: CurrentUser, db: DB):
-    if not verify_secret(body.password, user.password_hash):
+    if not await verify_secret_async(body.password, user.password_hash):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Неверный пароль")
-    user.pin_hash = hash_secret(body.pin)
+    user.pin_hash = await hash_secret_async(body.pin)
     await db.commit()
 
 

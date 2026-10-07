@@ -8,5 +8,4 @@ pyjwt>=2.10
 bcrypt>=4.3
 python-multipart>=0.0.20
 pillow>=11.3
-anthropic>=1.0
-jiter==0.11.1  # newer jiter DLL is blocked by Windows Smart App Control on the dev machine
+httpx>=0.28  # клиент Google Gemini API (без SDK)

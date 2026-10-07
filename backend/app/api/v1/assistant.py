@@ -7,9 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.deps import DB, AdminUser, CurrentUser
+from app.core.i18n import get_lang, tr
 from app.db.session import SessionLocal
 from app.models import AppSetting, User
-from app.services.ai import assistant
+from app.services.ai import assistant, gemini
 from app.services.ai.llm_client import API_KEY_SETTING, get_api_key, key_hint
 
 log = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class AssistantSettingsOut(BaseModel):
 
 
 class ApiKeyIn(BaseModel):
-    api_key: str = Field(min_length=20, max_length=300)
+    api_key: str = Field(min_length=20, max_length=300, description="Ключ Google AI Studio (AIza…)")
 
 
 @router.get("/settings/assistant", response_model=AssistantSettingsOut, summary="Состояние подключения ИИ")
@@ -36,23 +37,14 @@ async def get_assistant_settings(db: DB, _: AdminUser):
     return AssistantSettingsOut(configured=bool(key), source=source, key_hint=key_hint(key) if key else None, model=settings.llm_model)
 
 
-@router.put("/settings/assistant", response_model=AssistantSettingsOut, summary="Сохранить ключ Claude (с проверкой)")
+@router.put("/settings/assistant", response_model=AssistantSettingsOut, summary="Сохранить ключ Gemini (с проверкой)")
 async def set_assistant_key(body: ApiKeyIn, db: DB, _: AdminUser):
-    import anthropic
-
     key = body.api_key.strip()
-    # Проверяем ключ запросом к Models API — бесплатно и сразу видно, что ключ рабочий
     try:
-        async with anthropic.AsyncAnthropic(api_key=key, timeout=20.0, max_retries=1) as client:
-            await client.models.retrieve(settings.llm_model)
-    except anthropic.AuthenticationError:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Ключ не принят сервисом Claude — проверьте, что скопировали его полностью") from None
-    except anthropic.PermissionDeniedError:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "У ключа нет доступа к модели — проверьте настройки организации Anthropic") from None
-    except anthropic.APIConnectionError:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Сервер не может связаться с api.anthropic.com — проверьте доступ в интернет") from None
-    except anthropic.APIStatusError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Сервис Claude ответил ошибкой {e.status_code}") from None
+        await gemini.check_key(key)
+    except gemini.GeminiError as e:
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY if e.status in (400, 401, 403, 404) else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code, e.message) from None
 
     row = await db.get(AppSetting, API_KEY_SETTING)
     if row:
@@ -79,7 +71,8 @@ class AssistantStatus(BaseModel):
 
 
 class ChatIn(BaseModel):
-    messages: list[assistant.ChatMessage] = Field(min_length=1, max_length=40)
+    # модели уходят только последние реплики (assistant.context_window) — длинную историю не отклоняем
+    messages: list[assistant.ChatMessage] = Field(min_length=1, max_length=200)
 
 
 @router.get("/assistant/status", response_model=AssistantStatus)
@@ -96,17 +89,25 @@ async def assistant_chat(body: ChatIn, db: DB, user: CurrentUser):
     if not key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "ИИ-помощник не подключён: администратору нужно добавить ключ в «Настройках»")
     user_id = user.id
+    lang = get_lang()
+
+    def sse(event: dict) -> str:
+        # служебные сообщения (ошибки, «Ищу наряды…») — на языке интерфейса; ответ модели уже на нём
+        for field in ("message", "label"):
+            if field in event:
+                event = {**event, field: tr(event[field], lang)}
+        return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     async def events():
         # Своя сессия: зависимость get_db закрывается раньше, чем дочитается поток
         async with SessionLocal() as session:
             me = await session.get(User, user_id)
             try:
-                async for event in assistant.chat(session, me, body.messages, key):
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                async for event in assistant.chat(session, me, body.messages, key, lang=lang):
+                    yield sse(event)
             except Exception:
                 log.exception("assistant chat failed")
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Внутренняя ошибка помощника'}, ensure_ascii=False)}\n\n"
+                yield sse({"type": "error", "message": "Внутренняя ошибка помощника"})
 
     return StreamingResponse(
         events(),

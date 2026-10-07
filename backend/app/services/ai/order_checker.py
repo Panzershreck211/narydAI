@@ -2,7 +2,7 @@
 
 Слой 1 — детерминированные правила (всегда): полнота, соответствие отчёта проблеме,
 логичность материалов, правдоподобность сроков, фотофиксация.
-Слой 2 — опционально Claude (см. llm_judge.py): смысловая оценка отчёта.
+Слой 2 — опционально Gemini (см. llm_judge.py): смысловая оценка отчёта.
 """
 
 from dataclasses import asdict, dataclass, field
@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AIReport, Material, WorkOrder
-from app.models.enums import AIVerdict, FaultCategory, OrderAction, OrderType, PhotoType
+from app.models.enums import FAULT_CATEGORY_RU, AIVerdict, FaultCategory, OrderAction, OrderType, PhotoType
 from app.services.ai import text
 from app.services.ai.llm_judge import LLMVerdict
 from app.services.ai.photo_checker import assess_photos
@@ -87,8 +87,8 @@ def check_order(order: WorkOrder, catalog: dict[int, Material]) -> CheckResult:
             add(
                 "fault_vs_report",
                 "warn",
-                f"Шифр «{fault.code}» ({fault.category.value}) не согласуется с текстом отчёта "
-                f"(по тексту — {dominant.value})",
+                f"Шифр «{fault.code}» ({FAULT_CATEGORY_RU[fault.category]}) не согласуется с текстом отчёта "
+                f"(по тексту — {FAULT_CATEGORY_RU[dominant]})",
             )
 
     # 3. Логичность материалов
@@ -112,7 +112,7 @@ def check_order(order: WorkOrder, catalog: dict[int, Material]) -> CheckResult:
             add(
                 "material_category",
                 "warn",
-                f"Материал «{ref.name}» ({ref.category.value}) нетипичен для неисправности {fault.category.value}",
+                f"Материал «{ref.name}» ({FAULT_CATEGORY_RU[ref.category]}) нетипичен для неисправности: {FAULT_CATEGORY_RU[fault.category]}",
             )
 
     # 4. Правдоподобность сроков

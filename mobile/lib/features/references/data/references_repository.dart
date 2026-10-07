@@ -13,29 +13,15 @@ class ReferencesRepository {
     return (res.data as List).cast<Map<String, dynamic>>();
   }
 
+  /// Для закрытия наряда нужны только шифры неисправностей и материалы.
   Future<References> loadAll() async {
     final results = await Future.wait([
-      _list('workshops'),
-      _list('equipment'),
       _list('fault-codes'),
       _list('materials'),
-      _list('brigades'),
     ]);
     return References(
-      workshops: [
-        for (final j in results[0]) RefItem(id: j['id'], name: j['name']),
-      ],
-      equipment: [
-        for (final j in results[1])
-          RefItem(
-            id: j['id'],
-            name: j['name'],
-            workshopId: j['workshop_id'],
-            code: j['inventory_number'],
-          ),
-      ],
       faultCodes: [
-        for (final j in results[2])
+        for (final j in results[0])
           RefItem(
             id: j['id'],
             name: j['name'],
@@ -44,7 +30,7 @@ class ReferencesRepository {
           ),
       ],
       materials: [
-        for (final j in results[3])
+        for (final j in results[1])
           RefItem(
             id: j['id'],
             name: j['name'],
@@ -52,16 +38,7 @@ class ReferencesRepository {
             category: j['category'],
           ),
       ],
-      brigades: [
-        for (final j in results[4])
-          RefItem(id: j['id'], name: j['name'], workshopId: j['workshop_id']),
-      ],
     );
-  }
-
-  Future<List<ExecutorStatus>> executors() async {
-    final res = await _dio.get('/users/executors/availability');
-    return [for (final j in res.data as List) ExecutorStatus.fromJson(j)];
   }
 }
 

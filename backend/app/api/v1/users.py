@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.deps import DB, AdminUser, CurrentUser, MasterUser, StaffUser
-from app.core.security import hash_secret
+from app.core.security import hash_secret_async
 from app.models import Brigade, User
 from app.models.enums import Role
 from app.schemas.user import (
@@ -36,8 +36,8 @@ async def create_user(body: UserCreate, db: DB, _: AdminUser):
     await _check_brigade(db, body.brigade_id)
     user = User(
         **body.model_dump(exclude={"password", "pin"}),
-        password_hash=hash_secret(body.password),
-        pin_hash=hash_secret(body.pin) if body.pin else None,
+        password_hash=await hash_secret_async(body.password),
+        pin_hash=await hash_secret_async(body.pin) if body.pin else None,
     )
     db.add(user)
     try:
@@ -108,9 +108,9 @@ async def update_user(user_id: int, body: UserUpdate, db: DB, admin: AdminUser):
 @router.post("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_password(user_id: int, body: PasswordReset, db: DB, _: AdminUser):
     user = await _get_user(db, user_id)
-    user.password_hash = hash_secret(body.password)
+    user.password_hash = await hash_secret_async(body.password)
     if body.pin:
-        user.pin_hash = hash_secret(body.pin)
+        user.pin_hash = await hash_secret_async(body.pin)
     user.failed_pin_attempts = 0
     user.locked_until = None
     await db.commit()

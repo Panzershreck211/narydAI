@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import { useToast } from '../components/useToast'
 import { ErrorBox, Field, Spinner } from '../components/ui'
+import { t, tRich } from '../i18n/lang'
 
 interface AssistantSettings {
   configured: boolean
@@ -30,7 +31,7 @@ export function SettingsPage() {
     onSuccess: () => {
       setKey('')
       done()
-      toast.success('Ключ проверен и сохранён — помощник готов')
+      toast.success(t('Ключ проверен и сохранён — помощник готов'))
     },
     onError: toast.error,
   })
@@ -38,7 +39,7 @@ export function SettingsPage() {
     mutationFn: () => api<void>('/settings/assistant', { method: 'DELETE' }),
     onSuccess: () => {
       done()
-      toast.success('Ключ удалён')
+      toast.success(t('Ключ удалён'))
     },
     onError: toast.error,
   })
@@ -52,14 +53,13 @@ export function SettingsPage() {
   return (
     <div className="settings">
       <div className="page-head">
-        <h1>Настройки</h1>
+        <h1>{t('Настройки')}</h1>
       </div>
 
       <section className="panel">
-        <h2>✦ ИИ-помощник и ИИ-проверка нарядов</h2>
+        <h2>{t('✦ ИИ-помощник и ИИ-проверка нарядов')}</h2>
         <p className="muted">
-          Помощник отвечает на вопросы в чате (кнопка «Помощник» внизу справа), а ИИ дополнительно проверяет смысл
-          отчётов о выполненных работах. Для этого нужен ключ сервиса Claude компании Anthropic.
+          {t('Помощник отвечает на вопросы в чате (кнопка «Помощник» внизу справа), а ИИ дополнительно проверяет смысл отчётов о выполненных работах. Работает на Google Gemini — ключ бесплатный.')}
         </p>
 
         {settings.isPending && <Spinner />}
@@ -68,59 +68,67 @@ export function SettingsPage() {
           <div className={`callout ${s.configured ? 'callout--ok' : 'callout--warn'}`}>
             {s.configured ? (
               <>
-                <b>Подключено.</b> Ключ {s.key_hint}
-                {s.source === 'env' ? ' задан в файле настроек сервера' : ' сохранён в панели'} · модель {s.model}
+                <b>{t('Подключено.')}</b>{' '}
+                {s.source === 'env'
+                  ? t('Ключ {key} задан в файле настроек сервера', { key: s.key_hint ?? '' })
+                  : t('Ключ {key} сохранён в панели', { key: s.key_hint ?? '' })}{' '}
+                · {t('модель')} {s.model}
               </>
             ) : (
               <>
-                <b>Не подключено.</b> Чат-помощник недоступен, отчёты проверяются только правилами.
+                <b>{t('Не подключено.')}</b> {t('Чат-помощник недоступен, отчёты проверяются только правилами.')}
               </>
             )}
           </div>
         )}
 
         <form className="form settings__form" onSubmit={submit}>
-          <Field label={s?.configured ? 'Заменить ключ' : 'Ключ Claude API'} hint="Начинается с sk-ant-. Ключ проверяется перед сохранением.">
+          <Field label={s?.configured ? t('Заменить ключ') : t('Ключ Gemini API')} hint={t('Начинается с AIza. Ключ проверяется перед сохранением.')}>
             <input
               type="password"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="sk-ant-api03-…"
+              placeholder="AIzaSy…"
               autoComplete="off"
               spellCheck={false}
             />
           </Field>
           <div className="settings__actions">
             <button type="submit" className="btn btn--primary" disabled={!key.trim() || save.isPending}>
-              {save.isPending ? 'Проверяю…' : 'Проверить и сохранить'}
+              {save.isPending ? t('Проверяю…') : t('Проверить и сохранить')}
             </button>
             {s?.source === 'panel' && (
               <button
                 type="button"
                 className="btn btn--ghost"
                 disabled={remove.isPending}
-                onClick={() => confirm('Удалить ключ? Помощник перестанет работать.') && remove.mutate()}
+                onClick={() => confirm(t('Удалить ключ? Помощник перестанет работать.')) && remove.mutate()}
               >
-                Удалить ключ
+                {t('Удалить ключ')}
               </button>
             )}
           </div>
         </form>
 
         <details className="settings__help">
-          <summary>Где взять ключ?</summary>
+          <summary>{t('Где взять ключ?')}</summary>
           <ol>
             <li>
-              Откройте <b>console.anthropic.com</b> и войдите (или зарегистрируйте организацию).
+              {tRich('Откройте {site} и войдите под аккаунтом Google.', { site: <b>aistudio.google.com</b> })}
             </li>
-            <li>Пополните баланс в разделе Billing.</li>
             <li>
-              Раздел <b>API Keys</b> → <b>Create Key</b> → скопируйте ключ и вставьте сюда.
+              {tRich('Нажмите {get} → {create} — оплата и карта не нужны.', {
+                get: <b>Get API key</b>,
+                create: <b>Create API key</b>,
+              })}
             </li>
+            <li>{t('Скопируйте ключ (начинается с AIza) и вставьте сюда.')}</li>
           </ol>
           <p className="muted small">
-            Ключ хранится на сервере и не показывается целиком. Помощник только читает данные и не может ничего
-            изменить в системе.
+            {t('Бесплатный тариф ограничен числом запросов в минуту и в сутки — при превышении помощник попросит подождать. На бесплатном тарифе Google может использовать запросы для улучшения своих сервисов; если это недопустимо, включите оплату для проекта ключа в AI Studio.')}
+          </p>
+          <p className="muted small">
+            {t('Ключ хранится на сервере и не показывается целиком. Помощник только читает данные и не может ничего изменить в системе.')}
           </p>
         </details>
       </section>

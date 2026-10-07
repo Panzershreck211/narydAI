@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../features/auth/application/auth_controller.dart';
 import '../config.dart';
+import '../i18n/i18n.dart';
 import '../notifications/local_notifications.dart';
 import '../storage/token_storage.dart';
 
@@ -66,7 +67,7 @@ class RealtimeService {
     if (!_active || token == null) return;
     try {
       final channel = WebSocketChannel.connect(
-        Uri.parse('${AppConfig.wsUrl}?token=$token'),
+        Uri.parse('${AppConfig.wsUrl}?token=$token&lang=${currentLang.name}'),
       );
       await channel.ready;
       _channel = channel;

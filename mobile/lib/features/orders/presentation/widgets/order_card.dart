@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/i18n.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/common.dart';
 import '../../domain/work_order.dart';
@@ -90,16 +91,10 @@ Color priorityColor(BuildContext context, Priority p) {
 
 /// Карточка наряда — как .ocard в панели: аварийные с красной полосой слева, просроченные подсвечены.
 class OrderCard extends StatelessWidget {
-  const OrderCard({
-    super.key,
-    required this.order,
-    this.onTap,
-    this.compact = false,
-  });
+  const OrderCard({super.key, required this.order, this.onTap});
 
   final WorkOrder order;
   final VoidCallback? onTap;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +125,7 @@ class OrderCard extends StatelessWidget {
                       Row(
                         children: [
                           if (order.isEmergency) ...[
-                            Tag('АВАРИЙНЫЙ', bg: c.red, fg: Colors.white),
+                            Tag(tr('АВАРИЙНЫЙ'), bg: c.red, fg: Colors.white),
                             const SizedBox(width: 6),
                           ],
                           Expanded(
@@ -149,7 +144,7 @@ class OrderCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         order.description,
-                        maxLines: compact ? 2 : 3,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
@@ -167,7 +162,7 @@ class OrderCard extends StatelessWidget {
                             style: TextStyle(fontSize: 12, color: c.muted),
                           ),
                           if (order.equipmentStopped)
-                            Tag('простой', bg: c.amberSoft, fg: c.amber),
+                            Tag(tr('простой'), bg: c.amberSoft, fg: c.amber),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -182,7 +177,9 @@ class OrderCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               done
-                                  ? 'до ${dateTimeFmt.format(order.deadline)}'
+                                  ? tr('до {v}', {
+                                      'v': dateTimeFmt.format(order.deadline),
+                                    })
                                   : timeLeft(order.deadline),
                               style: TextStyle(
                                 fontSize: 12.5,
@@ -206,13 +203,6 @@ class OrderCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (compact) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          order.executor?.fio ?? 'Бригада — ещё не взят',
-                          style: TextStyle(fontSize: 12, color: c.muted),
-                        ),
-                      ],
                     ],
                   ),
                 ),

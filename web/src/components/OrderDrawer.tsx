@@ -4,9 +4,10 @@ import { useSearchParams } from 'react-router'
 import { useExecutors, useOrder, useOrderActions, useReference } from '../api/hooks'
 import type { AIReport, OrderDetail, Priority } from '../api/types'
 import { useUser } from '../auth/useAuth'
-import { EVENT, fmtDateTime, MASTER_ACTIONS, ORDER_TYPE, PRIORITY, STATUS, timeLeft, toLocalInput } from '../lib/labels'
+import { eventTitle, fmtDateTime, MASTER_ACTIONS, ORDER_TYPE, PRIORITY, timeLeft, toLocalInput } from '../lib/labels'
 import { useToast } from './useToast'
 import { AvailabilityDot, ErrorBox, Field, Modal, Spinner, StatusBadge } from './ui'
+import { localized, t } from '../i18n/lang'
 
 /** Боковая панель наряда. Открывается параметром ?order=ID с любой страницы. */
 export function OrderDrawer() {
@@ -29,7 +30,7 @@ export function OrderDrawer() {
   return (
     <>
       <div className="drawer-backdrop" onClick={close} />
-      <aside className="drawer" aria-label="Карточка наряда">
+      <aside className="drawer" aria-label={t('Карточка наряда')}>
         <DrawerContent id={id} onClose={close} />
       </aside>
     </>
@@ -51,12 +52,12 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
       <header className="drawer__head">
         <div>
           <div className="drawer__num">
-            {order.type === 'emergency' && <span className="tag tag--red">АВАРИЙНЫЙ</span>} {order.number}
+            {order.type === 'emergency' && <span className="tag tag--red">{t('АВАРИЙНЫЙ')}</span>} {order.number}
           </div>
           <StatusBadge status={order.status} />
-          {order.is_overdue && <span className="tag tag--red">просрочен</span>}
+          {order.is_overdue && <span className="tag tag--red">{t('просрочен')}</span>}
         </div>
-        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+        <button type="button" className="icon-btn" aria-label={t('Закрыть')} onClick={onClose}>
           ✕
         </button>
       </header>
@@ -75,7 +76,7 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
           ))}
           {editable && (
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => setDialog('edit')}>
-              Изменить
+              {t('Изменить')}
             </button>
           )}
         </div>
@@ -84,37 +85,37 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
       <section className="drawer__section">
         <p className="drawer__desc">{order.description}</p>
         <dl className="props">
-          <dt>Тип</dt>
+          <dt>{t('Тип')}</dt>
           <dd>{ORDER_TYPE[order.type]}</dd>
-          <dt>Приоритет</dt>
+          <dt>{t('Приоритет')}</dt>
           <dd>{PRIORITY[order.priority]}</dd>
-          <dt>Участок</dt>
+          <dt>{t('Участок')}</dt>
           <dd>{order.workshop.name}</dd>
-          <dt>Оборудование</dt>
+          <dt>{t('Оборудование')}</dt>
           <dd>
             {order.equipment ? `${order.equipment.name} (${order.equipment.inventory_number})` : '—'}
-            {order.equipment_stopped && <span className="tag tag--amber">остановлено</span>}
+            {order.equipment_stopped && <span className="tag tag--amber">{t('остановлено')}</span>}
           </dd>
-          <dt>Исполнитель</dt>
-          <dd>{order.executor?.fio ?? 'Бригада (не взят)'}</dd>
-          <dt>Мастер</dt>
+          <dt>{t('Исполнитель')}</dt>
+          <dd>{order.executor?.fio ?? t('Бригада (не взят)')}</dd>
+          <dt>{t('Мастер')}</dt>
           <dd>{order.master.fio}</dd>
-          <dt>Срок</dt>
+          <dt>{t('Срок')}</dt>
           <dd className={order.is_overdue ? 'text-red' : undefined}>
             {fmtDateTime(order.deadline)}
             {!['completed', 'closed', 'cancelled'].includes(order.status) && ` · ${timeLeft(order.deadline)}`}
           </dd>
-          <dt>Выдан</dt>
+          <dt>{t('Выдан')}</dt>
           <dd>{fmtDateTime(order.created_at)}</dd>
           {order.completed_at && (
             <>
-              <dt>Исполнен</dt>
+              <dt>{t('Исполнен')}</dt>
               <dd>{fmtDateTime(order.completed_at)}</dd>
             </>
           )}
           {order.master_score && (
             <>
-              <dt>Оценка мастера</dt>
+              <dt>{t('Оценка мастера')}</dt>
               <dd>{'★'.repeat(order.master_score)}</dd>
             </>
           )}
@@ -123,11 +124,11 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
 
       {order.work_report && (
         <section className="drawer__section">
-          <h3>Отчёт исполнителя</h3>
+          <h3>{t('Отчёт исполнителя')}</h3>
           <p>{order.work_report}</p>
           {order.fault_code && (
             <p className="muted">
-              Шифр: <b>{order.fault_code.code}</b> {order.fault_code.name}
+              {t('Шифр:')}{' '}<b>{order.fault_code.code}</b> {order.fault_code.name}
             </p>
           )}
           {order.materials.length > 0 && (
@@ -152,15 +153,15 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
       <Photos order={order} />
 
       <section className="drawer__section">
-        <h3>История</h3>
+        <h3>{t('История')}</h3>
         <ol className="timeline">
           {[...order.events].reverse().map((e) => (
             <li key={e.id} className={e.user ? undefined : 'timeline__ai'}>
               <time>{fmtDateTime(e.timestamp)}</time>
               <div>
-                <b>{e.to_status && e.action !== 'create' ? `${EVENT[e.action] ?? e.action} → ${STATUS[e.to_status]}` : EVENT[e.action] ?? e.action}</b>
+                <b>{eventTitle(e.action, e.to_status)}</b>
                 <div className="muted">
-                  {e.user?.fio ?? 'ИИ-система'}
+                  {e.user?.fio ?? t('ИИ-система')}
                   {e.reason && ` · ${e.reason}`}
                 </div>
               </div>
@@ -174,7 +175,7 @@ function DrawerContent({ id, onClose }: { id: number; onClose: () => void }) {
   )
 }
 
-const VERDICT = { ok: 'Замечаний нет', needs_review: 'Нужна проверка', rejected: 'Есть нарушения' } as const
+const VERDICT = localized({ ok: 'Замечаний нет', needs_review: 'Нужна проверка', rejected: 'Есть нарушения' })
 
 function AiReportCard({ report, orderId }: { report: AIReport; orderId: number }) {
   const { aiCheck } = useOrderActions(orderId)
@@ -184,12 +185,12 @@ function AiReportCard({ report, orderId }: { report: AIReport; orderId: number }
   return (
     <section className={`drawer__section ai ai--${report.verdict}`}>
       <div className="ai__head">
-        <h3>✦ ИИ-проверка: {VERDICT[report.verdict]}</h3>
+        <h3>✦ {t('ИИ-проверка')}: {VERDICT[report.verdict]}</h3>
         <span className="ai__score">{report.score.toFixed(1)}/5</span>
       </div>
       <div className="muted">
-        {report.source === 'rules+llm' ? 'Правила + LLM' : 'Правила'}
-        {report.photo_score !== null && ` · качество фото ${report.photo_score.toFixed(1)}/5`}
+        {report.source === 'rules+llm' ? t('Правила + LLM') : t('Правила')}
+        {report.photo_score !== null && t(' · качество фото {v}/5', { v: report.photo_score.toFixed(1) })}
       </div>
       {issues.length > 0 && (
         <ul className="ai__list">
@@ -202,7 +203,7 @@ function AiReportCard({ report, orderId }: { report: AIReport; orderId: number }
       )}
       {notes.length > 0 && (
         <details>
-          <summary>Подробнее ({notes.length})</summary>
+          <summary>{t('Подробнее ({n})', { n: notes.length })}</summary>
           <ul className="ai__list">
             {notes.map((c, i) => (
               <li key={i} className="sev sev--info">
@@ -216,9 +217,9 @@ function AiReportCard({ report, orderId }: { report: AIReport; orderId: number }
         type="button"
         className="btn btn--ghost btn--sm"
         disabled={aiCheck.isPending}
-        onClick={() => aiCheck.mutate(undefined, { onError: toast.error, onSuccess: () => toast.success('Проверка выполнена') })}
+        onClick={() => aiCheck.mutate(undefined, { onError: toast.error, onSuccess: () => toast.success(t('Проверка выполнена')) })}
       >
-        Перепроверить
+        {t('Перепроверить')}
       </button>
     </section>
   )
@@ -257,16 +258,16 @@ function Photos({ order }: { order: OrderDetail }) {
             />
           </label>
         )}
-        {!list.length && !(type && canAdd) && <span className="muted">нет</span>}
+        {!list.length && !(type && canAdd) && <span className="muted">{t('нет')}</span>}
       </div>
     </div>
   )
 
   return (
     <section className="drawer__section">
-      <h3>Фото {photos.isPending && <span className="muted">— загрузка…</span>}</h3>
-      {strip('До', before, 'before')}
-      {strip('После', after)}
+      <h3>{t('Фото')}{' '}{photos.isPending && <span className="muted">— {t('загрузка…')}</span>}</h3>
+      {strip(t('До'), before, 'before')}
+      {strip(t('После'), after)}
     </section>
   )
 }
@@ -296,10 +297,10 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
     e.preventDefault()
     switch (action) {
       case 'approve':
-        return actions.approve.mutate({ master_score: score, comment: reason || undefined }, opts('Работа принята'))
+        return actions.approve.mutate({ master_score: score, comment: reason || undefined }, opts(t('Работа принята')))
       case 'return':
       case 'cancel':
-        return actions.action.mutate({ action, reason }, opts(action === 'return' ? 'Возвращён на доработку' : 'Наряд отменён'))
+        return actions.action.mutate({ action, reason }, opts(action === 'return' ? t('Возвращён на доработку') : t('Наряд отменён')))
       case 'reassign': {
         const [kind, rawId] = assignee.split(':')
         const newDeadline = new Date(deadline)
@@ -309,7 +310,7 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
             brigade_id: kind === 'b' ? Number(rawId) : null,
             deadline: newDeadline > new Date() ? newDeadline.toISOString() : undefined,
           },
-          opts('Наряд переназначен'),
+          opts(t('Наряд переназначен')),
         )
       }
       case 'edit':
@@ -321,12 +322,12 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
             // срок шлём только при изменении: бэкенд при этом сбрасывает напоминания ИИ
             ...(deadline !== toLocalInput(new Date(order.deadline)) && { deadline: new Date(deadline).toISOString() }),
           },
-          opts('Изменения сохранены'),
+          opts(t('Изменения сохранены')),
         )
     }
   }
 
-  const title = action === 'edit' ? 'Изменить наряд' : MASTER_ACTIONS[action]
+  const title = action === 'edit' ? t('Изменить наряд') : MASTER_ACTIONS[action]
   const needsReason = action === 'return' || action === 'cancel'
 
   return (
@@ -336,7 +337,7 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
       footer={
         <>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button
             type="submit"
@@ -354,10 +355,10 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
           <>
             {order.ai_report && order.ai_report.verdict !== 'ok' && (
               <div className="callout callout--warn">
-                ИИ-проверка: {VERDICT[order.ai_report.verdict].toLowerCase()} — {order.ai_report.explanation}
+                {t('ИИ-проверка')}: {VERDICT[order.ai_report.verdict].toLowerCase()} — {order.ai_report.explanation}
               </div>
             )}
-            <Field label="Оценка качества">
+            <Field label={t('Оценка качества')}>
               <div className="stars" role="radiogroup">
                 {[1, 2, 3, 4, 5].map((s) => (
                   <button
@@ -374,31 +375,41 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
                 ))}
               </div>
             </Field>
-            <Field label="Комментарий">
+            <Field label={t('Комментарий')}>
               <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
             </Field>
           </>
         )}
 
         {needsReason && (
-          <Field label="Причина">
+          <Field label={t('Причина')}>
             <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} required autoFocus />
           </Field>
         )}
 
         {action === 'reassign' && (
           <>
-            <Field label="Новый исполнитель или бригада">
+            <Field label={t('Новый исполнитель или бригада')}>
               <select value={assignee} onChange={(e) => setAssignee(e.target.value)} required>
-                <option value="">— выберите —</option>
-                <optgroup label="Исполнители">
+                <option value="">{t('— выберите —')}</option>
+                <optgroup label={t('Исполнители')}>
                   {executors.data?.map((x) => (
                     <option key={x.id} value={`u:${x.id}`} disabled={x.id === order.executor?.id}>
-                      {x.fio} · {x.specialty} · {x.availability === 'free' ? 'свободен' : x.availability === 'off_shift' ? 'не на смене' : `нарядов: ${x.active_orders + x.queued_orders}`}
+                      {[
+                        x.fio,
+                        x.specialty,
+                        x.availability === 'free'
+                          ? t('свободен')
+                          : x.availability === 'off_shift'
+                            ? t('не на смене')
+                            : t('нарядов: {v}', { v: x.active_orders + x.queued_orders }),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="Бригады">
+                <optgroup label={t('Бригады')}>
                   {brigades.data?.map((b) => (
                     <option key={b.id} value={`b:${b.id}`}>
                       {b.name}
@@ -418,7 +429,7 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
                   ))}
               </div>
             )}
-            <Field label="Новый срок" hint="Оставьте прежним, если не меняется">
+            <Field label={t('Новый срок')} hint={t('Оставьте прежним, если не меняется')}>
               <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </Field>
           </>
@@ -426,11 +437,11 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
 
         {action === 'edit' && (
           <>
-            <Field label="Описание">
+            <Field label={t('Описание')}>
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
             </Field>
             <div className="form__row">
-              <Field label="Приоритет">
+              <Field label={t('Приоритет')}>
                 <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
                   {Object.entries(PRIORITY).map(([k, v]) => (
                     <option key={k} value={k}>
@@ -439,13 +450,13 @@ function ActionDialog({ order, action, onClose }: { order: OrderDetail; action: 
                   ))}
                 </select>
               </Field>
-              <Field label="Срок">
+              <Field label={t('Срок')}>
                 <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
               </Field>
             </div>
             <label className="check">
               <input type="checkbox" checked={stopped} onChange={(e) => setStopped(e.target.checked)} />
-              Оборудование остановлено
+              {t('Оборудование остановлено')}
             </label>
           </>
         )}

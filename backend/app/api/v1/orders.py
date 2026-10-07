@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.deps import DB, CurrentUser, ExecutorUser, MasterUser, StaffUser
-from app.db.base import utcnow
+from app.db.base import plant_time, utcnow
 from app.models import (
     Brigade,
     Equipment,
@@ -47,7 +47,7 @@ from app.schemas.order import (
     ReasonIn,
     ReassignIn,
 )
-from app.services.ai.photo_checker import analyze_photo
+from app.services.ai.photo_checker import ImageTooLarge, analyze_photo, validate_image
 from app.services.ai.pipeline import VERDICT_RU, run_llm_enrichment, run_rules_check
 from app.services.notifications import deliver_outbox, notify
 from app.services.orders import (
@@ -78,8 +78,8 @@ PRIORITY_RU = {Priority.LOW: "низкий", Priority.MEDIUM: "средний", 
 # ---------- helpers ----------
 
 
-async def _get_visible(db: DB, order_id: int, user: User) -> WorkOrder:
-    order = await load_order(db, order_id)
+async def _get_visible(db: DB, order_id: int, user: User, *, lock: bool = False) -> WorkOrder:
+    order = await load_order(db, order_id, lock=lock)
     if order is None or not can_view(order, user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Наряд не найден")
     return order
@@ -129,7 +129,7 @@ async def _notify_new_order(db: DB, order: WorkOrder) -> None:
         await _assignees(db, order),
         kind="new_order",
         title=("🔴 АВАРИЙНЫЙ наряд " if emergency else "Новый наряд ") + (order.number or ""),
-        body=f"{order.description[:140]} · приоритет {PRIORITY_RU[order.priority]} · срок {order.deadline:%d.%m %H:%M} UTC",
+        body=f"{order.description[:140]} · приоритет {PRIORITY_RU[order.priority]} · срок {plant_time(order.deadline)}",
         order=order,
     )
 
@@ -169,8 +169,8 @@ async def list_orders(
     overdue: bool | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
-    limit: int = Query(default=100, le=500),
-    offset: int = 0,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ):
     now = utcnow()
     stmt = visible_to(select(WorkOrder), user)
@@ -208,12 +208,13 @@ async def board(db: DB, user: StaffUser, workshop_id: int | None = None, hours: 
         stmt = stmt.where(WorkOrder.workshop_id == workshop_id)
     orders = [to_out(o, user, now) for o in (await db.scalars(stmt.order_by(WorkOrder.deadline))).unique()]
 
-    columns = [
-        BoardColumn(key=key, title=title, orders=[o for o in orders if o.status in statuses and not o.is_overdue])
+    # Наряд всегда в колонке своего статуса (просроченный — с красной подсветкой на карточке).
+    # «Просроченные» — первая колонка-сводка того, что требует внимания; карточки в ней повторяются.
+    overdue = BoardColumn(key="overdue", title="Просроченные", orders=[o for o in orders if o.is_overdue])
+    return [overdue] + [
+        BoardColumn(key=key, title=title, orders=[o for o in orders if o.status in statuses])
         for key, title, statuses in BOARD_COLUMNS
     ]
-    columns.append(BoardColumn(key="overdue", title="Просроченные", orders=[o for o in orders if o.is_overdue]))
-    return columns
 
 
 @router.get("/{order_id}", response_model=OrderDetail)
@@ -223,7 +224,7 @@ async def get_order(order_id: int, db: DB, user: CurrentUser):
 
 @router.patch("/{order_id}", response_model=OrderDetail, summary="Изменить наряд (мастер)")
 async def update_order(order_id: int, body: OrderUpdate, db: DB, master: MasterUser):
-    order = await _get_visible(db, order_id, master)
+    order = await _get_visible(db, order_id, master, lock=True)
     if order.status in (OrderStatus.CLOSED, OrderStatus.CANCELLED, OrderStatus.COMPLETED):
         raise HTTPException(status.HTTP_409_CONFLICT, "Наряд уже исполнен или закрыт")
     data = body.model_dump(exclude_unset=True)
@@ -233,7 +234,7 @@ async def update_order(order_id: int, body: OrderUpdate, db: DB, master: MasterU
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Оборудование не найдено на этом участке")
     if "deadline" in data:
         if data["deadline"] is None or data["deadline"].tzinfo is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "deadline должен содержать часовой пояс")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Срок должен содержать часовой пояс")
         order.reminder_sent = order.overdue_notified = order.risk_notified = False
     for k, v in data.items():
         setattr(order, k, v)
@@ -252,7 +253,7 @@ async def upload_photos(
     type: PhotoType = Query(...),
     files: list[UploadFile] = File(...),
 ):
-    order = await _get_visible(db, order_id, user)
+    order = await _get_visible(db, order_id, user, lock=True)
     if user.role == Role.EXECUTOR and not is_assignee(order, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Наряд назначен другому исполнителю")
     if user.role == Role.MANAGER:
@@ -263,7 +264,7 @@ async def upload_photos(
     existing = sum(1 for p in order.photos if p.type == type)
     if existing + len(files) > settings.max_photos_per_type:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Не больше {settings.max_photos_per_type} фото типа «{type.value}»"
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Не больше {settings.max_photos_per_type} фото «{'до' if type == PhotoType.BEFORE else 'после'}»"
         )
 
     folder = settings.media_dir / "orders" / str(order.id)
@@ -277,12 +278,14 @@ async def upload_photos(
             raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"{f.filename}: больше {settings.max_photo_mb} МБ")
         ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[f.content_type]
         path = folder / f"{type.value}_{uuid.uuid4().hex}.{ext}"
-        path.write_bytes(data)
+        await asyncio.to_thread(path.write_bytes, data)
         try:
-            with Image.open(path) as img:
-                img.verify()
+            await asyncio.to_thread(validate_image, path)
             meta = await asyncio.to_thread(analyze_photo, path)
-        except (UnidentifiedImageError, OSError, SyntaxError):
+        except (ImageTooLarge, Image.DecompressionBombError):
+            path.unlink(missing_ok=True)
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{f.filename}: слишком большое разрешение") from None
+        except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
             path.unlink(missing_ok=True)
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{f.filename}: файл не является изображением") from None
         rel = path.relative_to(settings.media_dir).as_posix()
@@ -303,7 +306,7 @@ async def upload_photos(
 async def order_action(order_id: int, action: OrderAction, db: DB, user: CurrentUser, body: ReasonIn | None = None):
     if action not in SIMPLE_ACTIONS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Используйте отдельный эндпоинт для этого действия")
-    order = await _get_visible(db, order_id, user)
+    order = await _get_visible(db, order_id, user, lock=True)
     reason = body.reason if body else None
     executor_before = order.executor_id
     await apply_transition(db, order, user, action, reason)
@@ -333,7 +336,7 @@ async def order_action(order_id: int, action: OrderAction, db: DB, user: Current
 
 @router.post("/{order_id}/complete", response_model=OrderDetail, summary="Исполнено: форма закрытия наряда")
 async def complete_order(order_id: int, body: CompleteIn, db: DB, user: ExecutorUser, background: BackgroundTasks):
-    order = await _get_visible(db, order_id, user)
+    order = await _get_visible(db, order_id, user, lock=True)
 
     fault = await db.get(FaultCode, body.fault_code_id)
     if fault is None:
@@ -347,7 +350,7 @@ async def complete_order(order_id: int, body: CompleteIn, db: DB, user: Executor
     for m in body.materials:
         ref = await db.get(Material, m.material_id) if m.material_id else None
         if m.material_id and ref is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Материал id={m.material_id} не найден")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Материал не найден в справочнике")
         materials.append(
             OrderMaterial(
                 material_id=m.material_id,
@@ -382,7 +385,7 @@ async def complete_order(order_id: int, body: CompleteIn, db: DB, user: Executor
 
 @router.post("/{order_id}/approve", response_model=OrderDetail, summary="Приёмка работ мастером")
 async def approve_order(order_id: int, body: ApproveIn, db: DB, master: MasterUser):
-    order = await _get_visible(db, order_id, master)
+    order = await _get_visible(db, order_id, master, lock=True)
     await apply_transition(db, order, master, OrderAction.APPROVE, body.comment)
     order.master_score = body.master_score
     return await _finish(db, order, master, OrderAction.APPROVE)
@@ -392,7 +395,7 @@ async def approve_order(order_id: int, body: ApproveIn, db: DB, master: MasterUs
 async def reassign_order(order_id: int, body: ReassignIn, db: DB, master: MasterUser):
     if body.executor_id is None and body.brigade_id is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Укажите исполнителя или бригаду")
-    order = await _get_visible(db, order_id, master)
+    order = await _get_visible(db, order_id, master, lock=True)
     await _validate_assignee(db, body.executor_id, body.brigade_id)
     await apply_transition(db, order, master, OrderAction.REASSIGN, body.reason)
     order.executor_id = body.executor_id
@@ -410,7 +413,7 @@ async def reassign_order(order_id: int, body: ReassignIn, db: DB, master: Master
 
 @router.post("/{order_id}/ai-check", response_model=OrderDetail, summary="Перезапустить ИИ-проверку")
 async def rerun_ai_check(order_id: int, db: DB, user: StaffUser, background: BackgroundTasks):
-    order = await _get_visible(db, order_id, user)
+    order = await _get_visible(db, order_id, user, lock=True)
     if order.status not in (OrderStatus.COMPLETED, OrderStatus.CLOSED):
         raise HTTPException(status.HTTP_409_CONFLICT, "Проверка доступна после исполнения наряда")
     await run_rules_check(db, order)

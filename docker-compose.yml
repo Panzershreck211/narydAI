@@ -1,14 +1,19 @@
 # Имя проекта фиксировано — не зависит от названия папки
 name: naryad-ai
 
+# Порты можно сменить без правки файла: WEB_PORT=9080 docker compose up -d
+# База и API слушают только localhost (эмулятор Android ходит через 10.0.2.2 — это тоже он);
+# наружу, в сеть предприятия, открыта только панель — она же проксирует /api и /ws.
+
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: naryad
       POSTGRES_USER: naryad
-      POSTGRES_PASSWORD: naryad
-    ports: ["5432:5432"]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-naryad}
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U naryad"]
@@ -17,19 +22,22 @@ services:
 
   api:
     build: ./backend
+    # если база ещё не готова (или временно недоступна) — перезапуститься, а не остаться лежать
+    restart: unless-stopped
     env_file:
       - path: ./backend/.env
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://naryad:naryad@db:5432/naryad
-    ports: ["8000:8000"]
+      DATABASE_URL: postgresql+asyncpg://naryad:${POSTGRES_PASSWORD:-naryad}@db:5432/naryad
+    ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
     volumes: [media:/app/media]
     depends_on:
       db: { condition: service_healthy }
 
   web:
     build: ./web
-    ports: ["8080:80"]
+    restart: unless-stopped
+    ports: ["${WEB_PORT:-8080}:80"]
     depends_on: [api]
 
 volumes:

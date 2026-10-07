@@ -116,3 +116,38 @@ class Criticality(StrEnum):
     A = "A"  # останов производства
     B = "B"
     C = "C"
+
+
+# Подписи для текстов, которые видит пользователь (в сообщениях не должно быть кодов вроде «in_progress»)
+STATUS_RU = {
+    OrderStatus.ISSUED: "Выдан",
+    OrderStatus.ACCEPTED: "Принят",
+    OrderStatus.QUEUED: "В очереди",
+    OrderStatus.IN_PROGRESS: "В работе",
+    OrderStatus.PAUSED: "Приостановлен",
+    OrderStatus.COMPLETED: "Исполнен",
+    OrderStatus.CLOSED: "Принят мастером",
+    OrderStatus.REJECTED: "Отклонён",
+    OrderStatus.CANCELLED: "Отменён",
+}
+ACTION_RU = {
+    OrderAction.ACCEPT: "Принять",
+    OrderAction.QUEUE: "В очередь",
+    OrderAction.REJECT: "Отклонить",
+    OrderAction.START: "Начать",
+    OrderAction.PAUSE: "Пауза",
+    OrderAction.COMPLETE: "Исполнено",
+    OrderAction.APPROVE: "Принять работу",
+    OrderAction.RETURN: "Вернуть на доработку",
+    OrderAction.REASSIGN: "Переназначить",
+    OrderAction.CANCEL: "Отменить",
+}
+FAULT_CATEGORY_RU = {
+    FaultCategory.MECHANICAL: "механика",
+    FaultCategory.ELECTRICAL: "электрика",
+    FaultCategory.HYDRAULIC: "гидравлика",
+    FaultCategory.PNEUMATIC: "пневматика",
+    FaultCategory.INSTRUMENTATION: "КИПиА",
+    FaultCategory.LUBRICATION: "смазка",
+    FaultCategory.OTHER: "прочее",
+}

@@ -4,12 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/config.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/common.dart';
-import '../../auth/application/auth_controller.dart';
-import '../../auth/domain/app_user.dart';
-import '../../references/data/references_repository.dart';
-import '../../references/domain/references.dart';
 import '../application/orders_providers.dart';
 import '../data/orders_repository.dart';
 import '../domain/work_order.dart';
@@ -45,18 +42,6 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     switch (action) {
       case OrderAction.complete:
         context.push('/orders/${widget.orderId}/close');
-      case OrderAction.approve:
-        final score = await _askScore();
-        if (score != null) {
-          await _run(() => _repo.approve(widget.orderId, score));
-        }
-      case OrderAction.reassign:
-        final executor = await _pickExecutor();
-        if (executor != null) {
-          await _run(
-            () => _repo.reassign(widget.orderId, executorId: executor),
-          );
-        }
       default:
         String? reason;
         if (action.needsReason) {
@@ -80,51 +65,14 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     );
   }
 
-  Future<int?> _askScore() => showDialog<int>(
-    context: context,
-    builder: (ctx) => SimpleDialog(
-      title: const Text('Оценка качества работы'),
-      children: [
-        for (var s = 5; s >= 1; s--)
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, s),
-            child: Row(
-              children: [
-                for (var i = 0; i < s; i++)
-                  const Icon(Icons.star, color: Colors.amber),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-
-  Future<int?> _pickExecutor() async {
-    final list = await ref.read(referencesRepositoryProvider).executors();
-    if (!mounted) return null;
-    return showModalBottomSheet<int>(
-      context: context,
-      builder: (ctx) => ListView(
-        children: [
-          for (final e in list)
-            ListTile(
-              leading: AvailabilityDot(e.availability),
-              title: Text(e.fio),
-              subtitle: Text('${e.specialty ?? ''} · ${e.availability.label}'),
-              onTap: () => Navigator.pop(ctx, e.id),
-            ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(orderDetailProvider(widget.orderId));
-    final role = ref.watch(currentUserProvider)?.role;
 
     return Scaffold(
-      appBar: AppBar(title: Text(detail.asData?.value.order.number ?? 'Наряд')),
+      appBar: AppBar(
+        title: Text(detail.asData?.value.order.number ?? tr('Наряд')),
+      ),
       body: AsyncView(
         value: detail,
         onRetry: () => ref.invalidate(orderDetailProvider(widget.orderId)),
@@ -140,12 +88,10 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                   _InfoSection(detail: d),
                   _PhotosSection(
                     photos: d.photos,
-                    canAddBefore:
-                        d.order.status.isActive && role != Role.manager,
+                    canAddBefore: d.order.status.isActive,
                     canAddAfter:
-                        role == Role.executor &&
-                        (d.order.status == OrderStatus.inProgress ||
-                            d.order.status == OrderStatus.paused),
+                        d.order.status == OrderStatus.inProgress ||
+                        d.order.status == OrderStatus.paused,
                     onAdd: (after) => _addPhoto(after: after),
                   ),
                   if (d.aiReport != null) _AiSection(report: d.aiReport!),
@@ -197,9 +143,8 @@ class _ActionButton extends StatelessWidget {
     OrderAction.accept,
     OrderAction.start,
     OrderAction.complete,
-    OrderAction.approve,
   };
-  static const _danger = {OrderAction.reject, OrderAction.cancel};
+  static const _danger = {OrderAction.reject};
 
   @override
   Widget build(BuildContext context) {
@@ -307,39 +252,39 @@ class _InfoSection extends StatelessWidget {
             ),
           );
     return _Section(
-      title: 'Сведения',
+      title: tr('Сведения'),
       child: Column(
         children: [
-          row('Тип', o.type.label, color: o.isEmergency ? c.red : null),
+          row(tr('Тип'), o.type.label, color: o.isEmergency ? c.red : null),
           row(
-            'Приоритет',
+            tr('Приоритет'),
             o.priority.label,
             color: priorityColor(context, o.priority),
           ),
-          row('Участок', o.workshopName),
-          row('Оборудование', o.equipmentName),
+          row(tr('Участок'), o.workshopName),
+          row(tr('Оборудование'), o.equipmentName),
           row(
-            'Состояние',
-            o.equipmentStopped ? 'Оборудование остановлено' : null,
+            tr('Состояние'),
+            o.equipmentStopped ? tr('Оборудование остановлено') : null,
             color: c.amber,
           ),
-          row('Мастер', o.master.fio),
-          row('Исполнитель', o.executor?.fio ?? 'Бригада (не взят)'),
+          row(tr('Мастер'), o.master.fio),
+          row(tr('Исполнитель'), o.executor?.fio ?? tr('Бригада (не взят)')),
           row(
-            'Срок',
+            tr('Срок'),
             o.status.isActive
                 ? '${dateTimeFmt.format(o.deadline)} · ${timeLeft(o.deadline)}'
                 : dateTimeFmt.format(o.deadline),
             color: o.isOverdue ? c.red : null,
           ),
-          row('Выдан', dateTimeFmt.format(o.createdAt)),
+          row(tr('Выдан'), dateTimeFmt.format(o.createdAt)),
           if (detail.workReport != null) ...[
             Divider(height: 20, color: c.border),
-            row('Выполнено', detail.workReport),
-            row('Шифр', detail.faultCode),
+            row(tr('Выполнено'), detail.workReport),
+            row(tr('Шифр'), detail.faultCode),
             if (detail.materials.isNotEmpty)
               row(
-                'Материалы',
+                tr('Материалы'),
                 detail.materials
                     .map((m) => '${m.name} — ${_qty(m.quantity)} ${m.unit}')
                     .join('\n'),
@@ -417,7 +362,7 @@ class _PhotosSection extends StatelessWidget {
                 if (list.isEmpty && !canAdd)
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('нет', style: TextStyle(color: c.muted)),
+                    child: Text(tr('нет'), style: TextStyle(color: c.muted)),
                   ),
               ],
             ),
@@ -427,13 +372,13 @@ class _PhotosSection extends StatelessWidget {
     }
 
     return _Section(
-      title: 'Фото',
+      title: tr('Фото'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          strip('До', false, canAddBefore),
+          strip(tr('До'), false, canAddBefore),
           const SizedBox(height: 12),
-          strip('После', true, canAddAfter),
+          strip(tr('После'), true, canAddAfter),
         ],
       ),
     );
@@ -456,7 +401,9 @@ class _AiSection extends StatelessWidget {
       (x) => x.severity == 'warn' || x.severity == 'error',
     );
     return _Section(
-      title: '✦ ИИ-проверка: ${report.verdictLabel}',
+      title: tr('✦ ИИ-проверка: {verdictLabel}', {
+        'verdictLabel': report.verdictLabel,
+      }),
       accent: accent,
       trailing: Text(
         '${report.score.toStringAsFixed(1)}/5',
@@ -471,9 +418,13 @@ class _AiSection extends StatelessWidget {
         children: [
           Text(
             [
-              report.source == 'rules+llm' ? 'Правила + LLM' : 'Правила',
+              report.source == 'rules+llm'
+                  ? tr('Правила + LLM')
+                  : tr('Правила'),
               if (report.photoScore != null)
-                'качество фото ${report.photoScore!.toStringAsFixed(1)}/5',
+                tr('качество фото {v}/5', {
+                  'v': report.photoScore!.toStringAsFixed(1),
+                }),
             ].join(' · '),
             style: TextStyle(color: c.muted, fontSize: 12.5),
           ),
@@ -503,6 +454,7 @@ class _AiSection extends StatelessWidget {
   }
 }
 
+// Подписи событий — ключи перевода, переводятся при отрисовке
 const _eventLabels = {
   'create': 'Наряд выдан',
   'accept': 'Принят в работу',
@@ -531,7 +483,7 @@ class _HistorySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return _Section(
-      title: 'История',
+      title: tr('История'),
       child: Column(
         children: [
           for (final e in events.reversed)
@@ -552,14 +504,17 @@ class _HistorySection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _eventLabels[e.action] ?? e.action,
+                          tr(_eventLabels[e.action] ?? e.action),
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: e.userName == null ? c.primary : c.text,
                           ),
                         ),
                         Text(
-                          [e.userName ?? 'ИИ-система', ?e.reason].join(' · '),
+                          [
+                            e.userName ?? tr('ИИ-система'),
+                            ?e.reason,
+                          ].join(' · '),
                           style: TextStyle(color: c.muted, fontSize: 12.5),
                         ),
                       ],
@@ -572,23 +527,6 @@ class _HistorySection extends StatelessWidget {
       ),
     );
   }
-}
-
-class AvailabilityDot extends StatelessWidget {
-  const AvailabilityDot(this.availability, {super.key});
-  final Availability availability;
-
-  /// Цвета из ТЗ: зелёный — свободен, жёлтый — в работе, синий — очередь, серый — не на смене.
-  static Color colorOf(Availability a) => switch (a) {
-    Availability.free => const Color(0xFF43A047),
-    Availability.busy => const Color(0xFFFBC02D),
-    Availability.queued => const Color(0xFF1E88E5),
-    Availability.offShift => const Color(0xFF9E9E9E),
-  };
-
-  @override
-  Widget build(BuildContext context) =>
-      CircleAvatar(radius: 7, backgroundColor: colorOf(availability));
 }
 
 /// 1.0 → «1», 0.5 → «0.5»

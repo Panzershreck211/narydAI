@@ -1,71 +1,75 @@
-"""ИИ-помощник: инструменты с учётом ролей, цикл вызова инструментов, ключ в панели, SSE.
+"""ИИ-помощник: инструменты с учётом ролей, цикл вызова функций Gemini, ключ в панели, SSE.
 
-Сеть не нужна: клиент Claude подменяется фейком с заранее заданными ответами.
+Сеть не нужна: Gemini API подменяется фейковым сервером на httpx.MockTransport.
 """
 
 import json
-from types import SimpleNamespace
 
+import httpx
 import pytest
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import User
-from app.services.ai import assistant
+from app.services.ai import assistant, gemini, llm_judge
 
 API = "/api/v1"
+VALID_KEY = "AIzaSy-valid-test-key-1234567890"
 
 
-# ---------- фейковый клиент Claude ----------
+# ---------- фейковый Gemini API ----------
 
 
-class FakeStream:
-    def __init__(self, texts: list[str], content: list, stop_reason: str):
-        self._texts = texts
-        self._final = SimpleNamespace(content=content, stop_reason=stop_reason)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-    def __aiter__(self):
-        async def gen():
-            for t in self._texts:
-                yield SimpleNamespace(type="text", text=t)
-
-        return gen()
-
-    async def get_final_message(self):
-        return self._final
+def text(t: str, **extra) -> dict:
+    return {"text": t, **extra}
 
 
-class FakeClient:
-    """Отдаёт заранее заготовленные ходы и запоминает, что ему прислали."""
-
-    def __init__(self, turns: list[FakeStream]):
-        self.turns = list(turns)
-        self.calls: list[dict] = []
-        self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
-
-    def _stream(self, **kwargs):
-        self.calls.append(kwargs)
-        return self.turns.pop(0)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
+def call(name: str, args: dict | None = None, id_: str | None = None) -> dict:
+    fc = {"name": name, "args": args or {}}
+    if id_:
+        fc["id"] = id_
+    return {"functionCall": fc, "thoughtSignature": "sig-" + name}
 
 
-def tool_use(name: str, args: dict, id_: str = "tu_1"):
-    return SimpleNamespace(type="tool_use", id=id_, name=name, input=args)
+def turn(*chunks: list[dict], finish: str = "STOP") -> list[dict]:
+    """Ход модели: несколько SSE-событий, в последнем — причина остановки."""
+    events = [{"candidates": [{"content": {"role": "model", "parts": parts}}]} for parts in chunks]
+    if not events:
+        events = [{"candidates": [{"content": {"role": "model", "parts": []}}]}]
+    events[-1]["candidates"][0]["finishReason"] = finish
+    return events
 
 
-def text_block(t: str):
-    return SimpleNamespace(type="text", text=t)
+class FakeGemini:
+    """Отдаёт заготовленные ходы и запоминает запросы."""
+
+    def __init__(self, turns: list[list[dict]] | None = None, *, status: int = 200, generate: dict | None = None):
+        self.turns = list(turns or [])
+        self.status = status
+        self.generate_response = generate
+        self.requests: list[dict] = []
+        self.keys: list[str] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.keys.append(request.headers.get("x-goog-api-key", ""))
+        path = request.url.path
+        if request.method == "GET" and path.endswith(f"/models/{settings.llm_model}"):
+            if request.headers.get("x-goog-api-key") != VALID_KEY:
+                return httpx.Response(400, json={"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "API_KEY_INVALID"}})
+            return httpx.Response(200, json={"name": f"models/{settings.llm_model}"})
+        if self.status != 200:
+            return httpx.Response(self.status, json={"error": {"code": self.status, "status": "RESOURCE_EXHAUSTED"}})
+        body = json.loads(request.content)
+        self.requests.append(body)
+        if path.endswith(":generateContent"):
+            return httpx.Response(200, json=self.generate_response)
+        assert path.endswith(":streamGenerateContent") and request.url.params["alt"] == "sse"
+        sse = "".join(f"data: {json.dumps(e, ensure_ascii=False)}\r\n\r\n" for e in self.turns.pop(0))
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
+
+    def factory(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=settings.gemini_base_url, transport=httpx.MockTransport(self.handler))
 
 
 async def get_user(login: str) -> User:
@@ -73,11 +77,11 @@ async def get_user(login: str) -> User:
         return await db.scalar(select(User).where(User.login == login))
 
 
-async def collect(user_login: str, question: str, client: FakeClient) -> list[dict]:
+async def collect(user_login: str, question: str, fake: FakeGemini) -> list[dict]:
     async with SessionLocal() as db:
         me = await db.scalar(select(User).where(User.login == user_login))
         msgs = [assistant.ChatMessage(role="user", content=question)]
-        return [e async for e in assistant.chat(db, me, msgs, "sk-test", client_factory=lambda _k: client)]
+        return [e async for e in assistant.chat(db, me, msgs, VALID_KEY, client_factory=fake.factory)]
 
 
 # ---------- инструменты ----------
@@ -139,35 +143,53 @@ async def test_tool_input_validation():
         assert any("М-01" in c for c in codes["items"])
 
 
+
+def test_function_declarations_fit_gemini():
+    """Схемы инструментов — подмножество OpenAPI: без $ref, anyOf, title; без параметров — без схемы."""
+    blob = json.dumps(assistant.FUNCTIONS)
+    assert "$ref" not in blob and "anyOf" not in blob and '"title"' not in blob and "additionalProperties" not in blob
+    by_name = {f["name"]: f for f in assistant.FUNCTIONS}
+    assert "parameters" not in by_name["shift_summary"]
+    status = by_name["find_orders"]["parameters"]["properties"]["status"]
+    assert status["type"] == "array" and "in_progress" in status["items"]["enum"] and status["nullable"]
+
+
 # ---------- цикл диалога ----------
 
 
-async def test_chat_runs_tool_then_answers():
-    fake = FakeClient(
+async def test_chat_runs_function_then_answers():
+    fake = FakeGemini(
         [
-            FakeStream(["Сейчас посмотрю. "], [text_block("Сейчас посмотрю. "), tool_use("find_orders", {"overdue": True})], "tool_use"),
-            FakeStream(["Просроченных ", "нарядов нет."], [text_block("Просроченных нарядов нет.")], "end_turn"),
+            turn([text("Сейчас посмотрю. ")], [call("find_orders", {"overdue": True}, "c1")]),
+            turn([text("Просроченных ")], [text("нарядов нет.")]),
         ]
     )
     events = await collect("master1", "Что просрочено?", fake)
 
     assert [e["type"] for e in events] == ["text", "tool", "text", "text", "done"]
     assert events[1]["label"] == "Ищу наряды"
-    # второй запрос к модели содержит её ход без изменений и результат инструмента
-    second = fake.calls[1]["messages"]
-    assert second[-2]["role"] == "assistant" and second[-2]["content"][1].name == "find_orders"
-    result = second[-1]["content"][0]
-    assert result["type"] == "tool_result" and result["tool_use_id"] == "tu_1" and not result["is_error"]
-    assert "found" in json.loads(result["content"])
-    # параметры запроса: модель, низкое усилие, серверный fallback
-    first = fake.calls[0]
-    assert first["output_config"] == {"effort": "low"}
-    assert first["fallbacks"] == "default"
-    assert "Ахметов" in first["system"]  # знает, с кем говорит
+    assert fake.keys[0] == VALID_KEY  # ключ — в заголовке, не в URL
+    # второй запрос содержит ход модели без изменений (с подписью) и результат функции
+    second = fake.requests[1]["contents"]
+    assert second[-2]["role"] == "model" and second[-2]["parts"][1]["thoughtSignature"] == "sig-find_orders"
+    result = second[-1]["parts"][0]["functionResponse"]
+    assert second[-1]["role"] == "user" and result["name"] == "find_orders" and result["id"] == "c1"
+    assert "found" in result["response"]["result"]
+    first = fake.requests[0]
+    assert "Ахметов" in first["systemInstruction"]["parts"][0]["text"]  # знает, с кем говорит
+    assert first["tools"][0]["functionDeclarations"] == assistant.FUNCTIONS
+
+
+async def test_chat_reports_tool_errors_to_model():
+    fake = FakeGemini([turn([call("executors_status")]), turn([text("Нет доступа.")])])
+    events = await collect("1001", "Кто свободен?", fake)  # исполнителю аналитика недоступна
+    assert events[-1]["type"] == "done"
+    response = fake.requests[1]["contents"][-1]["parts"][0]["functionResponse"]["response"]
+    assert "error" in response and "id" not in fake.requests[1]["contents"][-1]["parts"][0]["functionResponse"]
 
 
 async def test_chat_history_is_text_only_and_trimmed():
-    fake = FakeClient([FakeStream(["Ок"], [text_block("Ок")], "end_turn")])
+    fake = FakeGemini([turn([text("Ок")])])
     boss = await get_user("boss")
     history = []
     for i in range(30):
@@ -175,75 +197,110 @@ async def test_chat_history_is_text_only_and_trimmed():
         history.append(assistant.ChatMessage(role="assistant", content=f"ответ {i}"))
     history.append(assistant.ChatMessage(role="user", content="последний"))
     async with SessionLocal() as db:
-        _ = [e async for e in assistant.chat(db, boss, history, "k", client_factory=lambda _k: fake)]
-    sent = fake.calls[0]["messages"]
-    assert len(sent) == 20 and sent[-1] == {"role": "user", "content": "последний"}
-    assert all(isinstance(m["content"], str) for m in sent)
+        _ = [e async for e in assistant.chat(db, boss, history, VALID_KEY, client_factory=fake.factory)]
+    sent = fake.requests[0]["contents"]
+    # последние 20 реплик без ведущего ответа помощника: диалог для Gemini начинается с пользователя
+    assert len(sent) == 19 and sent[0]["role"] == "user"
+    assert sent[-1] == {"role": "user", "parts": [{"text": "последний"}]}
+    assert sent[-2]["role"] == "model"
 
 
-async def test_chat_refusal_and_loop_limit():
-    events = await collect("boss", "x", FakeClient([FakeStream([], [], "refusal")]))
-    assert events[-1]["type"] == "error"
+async def test_long_history_and_long_answers_do_not_break_chat(client, h):
+    """После длинного ответа помощника следующий вопрос не должен получать 422."""
+    long_answer = "Длинный ответ. " * 600  # ~9000 символов
+    history = []
+    for i in range(30):
+        history += [{"role": "user", "content": f"вопрос {i}"}, {"role": "assistant", "content": long_answer}]
+    history.append({"role": "user", "content": "ещё вопрос"})
+    master = await h("master1")
+    r = await client.post(f"{API}/assistant/chat", json={"messages": history}, headers=master)
+    assert r.status_code != 422, r.text  # 503 — ключ в тесте не задан, но валидация пройдена
 
-    endless = [FakeStream([], [tool_use("shift_summary", {}, f"t{i}")], "tool_use") for i in range(assistant.MAX_TOOL_ROUNDS)]
-    events = await collect("boss", "x", FakeClient(endless))
+    msg = assistant.ChatMessage(role="assistant", content=long_answer)
+    assert len(msg.content) == assistant.MAX_MESSAGE + 1  # обрезан, «…» в конце
+    r = await client.post(
+        f"{API}/assistant/chat", json={"messages": [{"role": "user", "content": "x" * 5000}]}, headers=master
+    )
+    assert r.status_code == 422 and "Вопрос длиннее 4000 символов" in r.json()["detail"][0]["msg"]
+
+
+async def test_chat_blocked_too_long_and_loop_limit():
+    assert (await collect("boss", "x", FakeGemini([turn(finish="SAFETY")])))[-1]["type"] == "error"
+    events = await collect("boss", "x", FakeGemini([turn([text("очень")], finish="MAX_TOKENS")]))
+    assert events[-1] == {"type": "error", "message": "Ответ получился слишком длинным, уточните вопрос"}
+
+    endless = [turn([call("shift_summary")]) for _ in range(assistant.MAX_TOOL_ROUNDS)]
+    events = await collect("boss", "x", FakeGemini(endless))
     assert sum(e["type"] == "tool" for e in events) == assistant.MAX_TOOL_ROUNDS
     assert events[-1]["type"] == "error"
 
 
-async def test_chat_maps_api_errors():
-    import anthropic
-    import httpx2
+@pytest.mark.parametrize(
+    ("status", "words"),
+    [(429, "лимит бесплатного"), (403, "Настройках"), (503, "перегружен"), (400, "Ошибка ИИ-сервиса")],
+)
+async def test_chat_maps_api_errors(status, words):
+    events = await collect("boss", "x", FakeGemini(status=status))
+    assert len(events) == 1 and events[0]["type"] == "error" and words in events[0]["message"]
 
-    class Failing(FakeClient):
-        def _stream(self, **kwargs):
-            raise anthropic.AuthenticationError(
-                "bad key",
-                response=httpx2.Response(401, request=httpx2.Request("POST", "https://api.anthropic.com")),
-                body=None,
-            )
 
-    events = await collect("boss", "x", Failing([]))
-    assert events == [{"type": "error", "message": events[0]["message"]}]
-    assert "Настройках" in events[0]["message"]
+async def test_chat_network_error():
+    def broken() -> httpx.AsyncClient:
+        def fail(request):
+            raise httpx.ConnectError("нет сети")
+
+        return httpx.AsyncClient(base_url=settings.gemini_base_url, transport=httpx.MockTransport(fail))
+
+    async with SessionLocal() as db:
+        me = await db.scalar(select(User).where(User.login == "boss"))
+        msgs = [assistant.ChatMessage(role="user", content="x")]
+        events = [e async for e in assistant.chat(db, me, msgs, VALID_KEY, client_factory=broken)]
+    assert events == [{"type": "error", "message": "Нет связи с ИИ-сервисом"}]
+
+
+# ---------- смысловая проверка наряда ----------
+
+
+FACTS = llm_judge.OrderFacts("Течь масла из редуктора", "Редуктор", "Г-02", "Заменил сальник, долил масло", ["Сальник 1 шт"])
+
+
+async def test_judge_parses_structured_answer():
+    answer = {"relevance": 7, "materials_logical": True, "issues": [], "summary": "Работа соответствует"}
+    fake = FakeGemini(generate={"candidates": [{"content": {"parts": [text(json.dumps(answer, ensure_ascii=False))]}, "finishReason": "STOP"}]})
+    verdict = await llm_judge.judge(FACTS, VALID_KEY, fake.factory)
+    assert verdict and verdict.relevance == 5 and verdict.summary == "Работа соответствует"  # оценка обрезана до 5
+    cfg = fake.requests[0]["generationConfig"]
+    assert cfg["responseMimeType"] == "application/json" and "relevance" in cfg["responseSchema"]["properties"]
+    assert "<отчёт>" in fake.requests[0]["contents"][0]["parts"][0]["text"]
+
+
+async def test_judge_failures_fall_back_to_rules():
+    assert await llm_judge.judge(FACTS, None) is None
+    assert await llm_judge.judge(FACTS, VALID_KEY, FakeGemini(status=429).factory) is None
+    garbage = FakeGemini(generate={"candidates": [{"content": {"parts": [text("не json")]}, "finishReason": "STOP"}]})
+    assert await llm_judge.judge(FACTS, VALID_KEY, garbage.factory) is None
+    blocked = FakeGemini(generate={"promptFeedback": {"blockReason": "SAFETY"}})
+    assert await llm_judge.judge(FACTS, VALID_KEY, blocked.factory) is None
+
+
+def test_schema_conversion():
+    schema = gemini.to_schema(llm_judge.LLMVerdict.model_json_schema())
+    assert schema["type"] == "object" and schema["properties"]["issues"] == {"type": "array", "items": {"type": "string"}}
+    assert "title" not in json.dumps(schema)
 
 
 # ---------- ключ в панели и HTTP ----------
 
 
 @pytest.fixture
-def fake_anthropic(monkeypatch):
-    """Подменяет anthropic.AsyncAnthropic: проверка ключа и чат без сети."""
-    import anthropic
-
-    state = {"valid": {"sk-ant-api03-valid-key-1234567890"}, "chat": None}
-
-    class FakeAsyncAnthropic:
-        def __init__(self, api_key=None, **_):
-            self.api_key = api_key
-
-            async def retrieve(model_id):
-                if self.api_key not in state["valid"]:
-                    import httpx2
-
-                    raise anthropic.AuthenticationError(
-                        "invalid", response=httpx2.Response(401, request=httpx2.Request("GET", "https://x")), body=None
-                    )
-                return SimpleNamespace(id=model_id)
-
-            self.models = SimpleNamespace(retrieve=retrieve)
-
-        async def __aenter__(self):
-            return state["chat"] or self
-
-        async def __aexit__(self, *exc):
-            return False
-
-    monkeypatch.setattr(anthropic, "AsyncAnthropic", FakeAsyncAnthropic)
-    return state
+def fake_gemini(monkeypatch):
+    """Подменяет HTTP-клиент Gemini для всего приложения (проверка ключа и чат без сети)."""
+    fake = FakeGemini()
+    monkeypatch.setattr(gemini, "default_client", fake.factory)
+    return fake
 
 
-async def test_key_management_and_chat_endpoint(client, h, fake_anthropic):
+async def test_key_management_and_chat_endpoint(client, h, fake_gemini):
     admin, master = await h("admin"), await h("master1")
 
     assert (await client.get(f"{API}/assistant/status", headers=master)).json() == {"configured": False}
@@ -252,29 +309,36 @@ async def test_key_management_and_chat_endpoint(client, h, fake_anthropic):
 
     # только админ управляет ключом
     assert (await client.get(f"{API}/settings/assistant", headers=master)).status_code == 403
-    assert (await client.put(f"{API}/settings/assistant", json={"api_key": "sk-ant-api03-valid-key-1234567890"}, headers=master)).status_code == 403
+    assert (await client.put(f"{API}/settings/assistant", json={"api_key": VALID_KEY}, headers=master)).status_code == 403
 
-    r = await client.put(f"{API}/settings/assistant", json={"api_key": "sk-ant-api03-WRONG-key-0000000000"}, headers=admin)
+    r = await client.put(f"{API}/settings/assistant", json={"api_key": "AIzaSy-WRONG-key-00000000000000"}, headers=admin)
     assert r.status_code == 422 and "не принят" in r.json()["detail"]
 
-    r = await client.put(f"{API}/settings/assistant", json={"api_key": "  sk-ant-api03-valid-key-1234567890 "}, headers=admin)
+    r = await client.put(f"{API}/settings/assistant", json={"api_key": f"  {VALID_KEY} "}, headers=admin)
     body = r.json()
     assert r.status_code == 200 and body["configured"] and body["source"] == "panel"
-    assert body["key_hint"] == "sk-ant-api03…7890" and "valid-key" not in body["key_hint"]  # ключ целиком не отдаём
+    assert body["model"] == settings.llm_model and body["model"].startswith("gemini")
+    assert body["key_hint"] == "AIzaSy-v…7890" and "valid-test" not in body["key_hint"]  # ключ целиком не отдаём
     assert (await client.get(f"{API}/assistant/status", headers=master)).json() == {"configured": True}
 
     # чат по SSE
-    fake_anthropic["chat"] = FakeClient(
-        [
-            FakeStream([], [tool_use("executors_status", {})], "tool_use"),
-            FakeStream(["Свободны: ", "Жумабаев."], [text_block("Свободны: Жумабаев.")], "end_turn"),
-        ]
-    )
+    fake_gemini.turns = [turn([call("executors_status")]), turn([text("Свободны: ")], [text("Жумабаев.")])]
     r = await client.post(f"{API}/assistant/chat", json={"messages": [{"role": "user", "content": "Кто свободен?"}]}, headers=master)
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
     events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
     assert [e["type"] for e in events] == ["tool", "text", "text", "done"]
     assert "".join(e["text"] for e in events if e["type"] == "text") == "Свободны: Жумабаев."
+
+    # ошибка лимита — по-казахски, если интерфейс на казахском
+    fake_gemini.status = 429
+    r = await client.post(
+        f"{API}/assistant/chat",
+        json={"messages": [{"role": "user", "content": "x"}]},
+        headers={**master, "Accept-Language": "kk"},
+    )
+    events = [json.loads(line[6:]) for line in r.text.splitlines() if line.startswith("data: ")]
+    assert events == [{"type": "error", "message": "Gemini тегін тарифінің шегі таусылды — бір минуттан кейін қайталаңыз"}]
+    fake_gemini.status = 200
 
     # последнее сообщение должно быть от пользователя
     r = await client.post(f"{API}/assistant/chat", json={"messages": [{"role": "assistant", "content": "x"}]}, headers=master)
@@ -282,3 +346,30 @@ async def test_key_management_and_chat_endpoint(client, h, fake_anthropic):
 
     assert (await client.delete(f"{API}/settings/assistant", headers=admin)).status_code == 204
     assert (await client.get(f"{API}/assistant/status", headers=master)).json() == {"configured": False}
+
+
+async def test_overloaded_model_falls_back_to_next(monkeypatch):
+    """Основная модель перегружена (503) — ответ даёт запасная, пользователь сбоя не видит."""
+    monkeypatch.setattr(settings, "llm_model", "main-model")
+    monkeypatch.setattr(settings, "llm_fallback_models", ["spare-model"])
+    fake = FakeGemini([turn([text("Ответ запасной модели")])])
+    handler = fake.handler
+    used = []
+
+    def by_model(request: httpx.Request) -> httpx.Response:
+        used.append(request.url.path.rsplit("/", 1)[-1].split(":")[0])
+        if "main-model" in request.url.path:
+            return httpx.Response(503, json={"error": {"code": 503, "status": "UNAVAILABLE"}})
+        return handler(request)
+
+    fake.handler = by_model
+    events = await collect("boss", "x", fake)
+    assert used == ["main-model", "spare-model"]
+    assert [e["type"] for e in events] == ["text", "done"]
+
+    # ИИ-проверка наряда тоже переходит на запасную модель
+    answer = {"relevance": 4, "materials_logical": True, "issues": [], "summary": "ок"}
+    fake.generate_response = {"candidates": [{"content": {"parts": [text(json.dumps(answer))]}, "finishReason": "STOP"}]}
+    used.clear()
+    assert (await llm_judge.judge(FACTS, VALID_KEY, fake.factory)).summary == "ок"
+    assert used == ["main-model", "spare-model"]

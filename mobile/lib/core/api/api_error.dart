@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../i18n/i18n.dart';
+
 /// Ошибка API с человекочитаемым текстом (бэкенд отдаёт `detail` на русском).
 class ApiError implements Exception {
   ApiError(this.message, {this.statusCode});
@@ -30,10 +32,15 @@ class ApiError implements Exception {
         DioExceptionType.connectionTimeout ||
         DioExceptionType.receiveTimeout ||
         DioExceptionType.sendTimeout => ApiError(
-          'Сервер не отвечает. Проверьте связь.',
+          tr('Сервер не отвечает. Проверьте связь.'),
         ),
-        DioExceptionType.connectionError => ApiError('Нет связи с сервером'),
-        _ => ApiError('Ошибка сервера (${code ?? '—'})', statusCode: code),
+        DioExceptionType.connectionError => ApiError(
+          tr('Нет связи с сервером'),
+        ),
+        _ => ApiError(
+          tr('Ошибка сервера ({v})', {'v': code ?? '—'}),
+          statusCode: code,
+        ),
       };
     }
     return ApiError(error.toString());

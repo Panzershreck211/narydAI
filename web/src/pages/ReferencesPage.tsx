@@ -2,22 +2,25 @@ import { useState, type FormEvent } from 'react'
 
 import { useReference, useRefMutations, type RefName } from '../api/hooks'
 import { useToast } from '../components/useToast'
-import { ErrorBox, Field, Modal, Spinner } from '../components/ui'
+import { Empty, ErrorBox, Field, Modal, Spinner } from '../components/ui'
 import { CRITICALITY, FAULT_CATEGORY } from '../lib/labels'
+import { t } from '../i18n/lang'
 
 type Row = { id: number } & Record<string, unknown>
 type Options = { value: string; label: string }[]
 
+// Подписи здесь — ключи перевода (по-русски); переводятся при отрисовке через t()
 interface Column {
   key: string
   label: string
   kind?: 'text' | 'number' | 'select'
-  options?: 'workshops' | Options
+  options?: 'workshops' | 'categories' | 'criticality'
   optional?: boolean
 }
 
-const categories: Options = Object.entries(FAULT_CATEGORY).map(([value, label]) => ({ value, label }))
-const criticality: Options = Object.entries(CRITICALITY).map(([value, label]) => ({ value, label }))
+// Списки строятся при отрисовке — подписи берутся на текущем языке
+const toOptions = (map: Record<string, string>): Options =>
+  Object.keys(map).map((value) => ({ value, label: map[value] }))
 
 const TABS: { name: RefName; title: string; columns: Column[] }[] = [
   { name: 'workshops', title: 'Участки', columns: [{ key: 'name', label: 'Название' }] },
@@ -28,7 +31,7 @@ const TABS: { name: RefName; title: string; columns: Column[] }[] = [
       { key: 'name', label: 'Наименование' },
       { key: 'inventory_number', label: 'Инв. номер' },
       { key: 'workshop_id', label: 'Участок', kind: 'select', options: 'workshops' },
-      { key: 'criticality', label: 'Критичность', kind: 'select', options: criticality },
+      { key: 'criticality', label: 'Критичность', kind: 'select', options: 'criticality' },
     ],
   },
   {
@@ -45,7 +48,7 @@ const TABS: { name: RefName; title: string; columns: Column[] }[] = [
     columns: [
       { key: 'code', label: 'Шифр' },
       { key: 'name', label: 'Неисправность' },
-      { key: 'category', label: 'Категория', kind: 'select', options: categories },
+      { key: 'category', label: 'Категория', kind: 'select', options: 'categories' },
     ],
   },
   {
@@ -55,7 +58,7 @@ const TABS: { name: RefName; title: string; columns: Column[] }[] = [
       { key: 'name', label: 'Наименование' },
       { key: 'sku', label: 'Артикул', optional: true },
       { key: 'unit', label: 'Ед.' },
-      { key: 'category', label: 'Категория', kind: 'select', options: categories },
+      { key: 'category', label: 'Категория', kind: 'select', options: 'categories' },
       { key: 'max_per_order', label: 'Макс. на наряд', kind: 'number', optional: true },
     ],
   },
@@ -63,23 +66,23 @@ const TABS: { name: RefName; title: string; columns: Column[] }[] = [
 
 export function ReferencesPage() {
   const [tab, setTab] = useState(TABS[0].name)
-  const current = TABS.find((t) => t.name === tab)!
+  const current = TABS.find((x) => x.name === tab)!
   return (
     <div>
       <div className="page-head">
-        <h1>Справочники</h1>
+        <h1>{t('Справочники')}</h1>
       </div>
       <div className="tabs" role="tablist">
-        {TABS.map((t) => (
+        {TABS.map((x) => (
           <button
-            key={t.name}
+            key={x.name}
             type="button"
             role="tab"
-            aria-selected={tab === t.name}
-            className={`tabs__item${tab === t.name ? ' is-active' : ''}`}
-            onClick={() => setTab(t.name)}
+            aria-selected={tab === x.name}
+            className={`tabs__item${tab === x.name ? ' is-active' : ''}`}
+            onClick={() => setTab(x.name)}
           >
-            {t.title}
+            {t(x.title)}
           </button>
         ))}
       </div>
@@ -96,8 +99,12 @@ function RefTable({ name, title, columns }: (typeof TABS)[number]) {
   const [editing, setEditing] = useState<Row | 'new' | null>(null)
   const [search, setSearch] = useState('')
 
-  const resolve = (c: Column) =>
-    c.options === 'workshops' ? (workshops.data ?? []).map((w) => ({ value: String(w.id), label: w.name })) : c.options
+  const resolve = (c: Column): Options | undefined => {
+    if (c.options === 'workshops') return (workshops.data ?? []).map((w) => ({ value: String(w.id), label: w.name }))
+    if (c.options === 'categories') return toOptions(FAULT_CATEGORY)
+    if (c.options === 'criticality') return toOptions(CRITICALITY)
+    return undefined
+  }
 
   const display = (c: Column, v: unknown) => {
     if (v === null || v === undefined || v === '') return '—'
@@ -112,10 +119,10 @@ function RefTable({ name, title, columns }: (typeof TABS)[number]) {
   return (
     <>
       <div className="filters">
-        <input type="search" placeholder={`Поиск: ${title.toLowerCase()}`} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="search" placeholder={t('Поиск: {what}', { what: t(title).toLowerCase() })} value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="page-head__spacer" />
         <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
-          + Добавить
+          {t('+ Добавить')}
         </button>
       </div>
       {isPending && <Spinner />}
@@ -127,7 +134,7 @@ function RefTable({ name, title, columns }: (typeof TABS)[number]) {
               <tr>
                 {columns.map((c) => (
                   <th key={c.key} className={c.kind === 'number' ? 'num' : undefined}>
-                    {c.label}
+                    {t(c.label)}
                   </th>
                 ))}
                 <th />
@@ -143,24 +150,24 @@ function RefTable({ name, title, columns }: (typeof TABS)[number]) {
                   ))}
                   <td className="actions">
                     <button type="button" className="link" onClick={() => setEditing(r)}>
-                      Изменить
+                      {t('Изменить')}
                     </button>
                     <button
                       type="button"
                       className="link link--danger"
                       onClick={() =>
-                        confirm('Удалить запись? Если она используется в нарядах, сервер откажет.') &&
-                        remove.mutate(r.id, { onSuccess: () => toast.success('Удалено'), onError: toast.error })
+                        confirm(t('Удалить запись? Если она используется в нарядах, сервер откажет.')) &&
+                        remove.mutate(r.id, { onSuccess: () => toast.success(t('Удалено')), onError: toast.error })
                       }
                     >
-                      Удалить
+                      {t('Удалить')}
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {rows.length === 0 && <div className="empty">Записей нет</div>}
+          {rows.length === 0 && <Empty>{t('Записей нет')}</Empty>}
         </div>
       )}
       {editing && (
@@ -207,7 +214,7 @@ function RefDialog({
       else if (c.kind === 'number' || c.key.endsWith('_id')) body[c.key] = Number(v)
       else body[c.key] = v
     }
-    const opts = { onSuccess: () => (toast.success('Сохранено'), onClose()), onError: toast.error }
+    const opts = { onSuccess: () => (toast.success(t('Сохранено')), onClose()), onError: toast.error }
     // Тип тела зависит от справочника — сервер проверит схему сам
     if (row) update.mutate({ id: row.id, ...body } as never, opts)
     else create.mutate(body as never, opts)
@@ -215,22 +222,22 @@ function RefDialog({
 
   return (
     <Modal
-      title={`${row ? 'Изменить' : 'Добавить'}: ${title.toLowerCase()}`}
+      title={`${row ? t('Изменить') : t('Добавить')}: ${t(title).toLowerCase()}`}
       onClose={onClose}
       footer={
         <>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button type="submit" form="ref-form" className="btn btn--primary" disabled={create.isPending || update.isPending}>
-            Сохранить
+            {t('Сохранить')}
           </button>
         </>
       }
     >
       <form id="ref-form" className="form" onSubmit={submit}>
         {columns.map((c, i) => (
-          <Field key={c.key} label={c.label + (c.optional ? ' (необязательно)' : '')}>
+          <Field key={c.key} label={t(c.label) + (c.optional ? ` (${t('необязательно')})` : '')}>
             {c.kind === 'select' ? (
               <select
                 value={values[c.key]}

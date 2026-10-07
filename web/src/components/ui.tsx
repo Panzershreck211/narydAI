@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 import type { Availability, OrderStatus } from '../api/types'
 import { AVAILABILITY, STATUS } from '../lib/labels'
+import { t } from '../i18n/lang'
 
 export function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`badge badge--${status}`}>{STATUS[status]}</span>
@@ -16,7 +17,7 @@ export function AvailabilityDot({ value, withLabel = false }: { value: Availabil
   )
 }
 
-export function Spinner({ label = 'Загрузка…' }: { label?: string }) {
+export function Spinner({ label = t('Загрузка…') }: { label?: string }) {
   return (
     <div className="spinner" role="status">
       <span className="spinner__circle" />
@@ -28,10 +29,10 @@ export function Spinner({ label = 'Загрузка…' }: { label?: string }) {
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   return (
     <div className="error-box">
-      {error instanceof Error ? error.message : 'Ошибка'}
+      {error instanceof Error ? error.message : t('Ошибка')}
       {onRetry && (
         <button type="button" className="btn btn--ghost btn--sm" onClick={onRetry}>
-          Повторить
+          {t('Повторить')}
         </button>
       )}
     </div>
@@ -87,7 +88,7 @@ export function Modal({
       <div className="modal__inner">
         <header className="modal__head">
           <h2>{title}</h2>
-          <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+          <button type="button" className="icon-btn" aria-label={t('Закрыть')} onClick={onClose}>
             ✕
           </button>
         </header>

@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.i18n import field_label
 from app.models.enums import Availability, Role, Shift
 
 
@@ -28,6 +29,14 @@ class UserUpdate(BaseModel):
     brigade_id: int | None = None
     shift: Shift | None = None
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_null_for_required(self):
+        # PATCH: поле можно не передавать, но «очистить» обязательное поле нельзя
+        nulls = sorted(k for k in self.model_fields_set - {"specialty", "grade", "brigade_id", "shift"} if getattr(self, k) is None)
+        if nulls:
+            raise ValueError(f"Поля не могут быть пустыми: {', '.join(field_label(k, 'ru') for k in nulls)}")
+        return self
 
 
 class PasswordReset(BaseModel):

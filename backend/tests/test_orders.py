@@ -82,7 +82,7 @@ async def test_full_emergency_flow(client, h, refs, order_payload):
     assert me["closed"] >= 1 and me["points"] > 0 and me["on_time_pct"] == 100.0
 
     board = (await client.get(f"{API}/orders/board", headers=master)).json()
-    assert [c["key"] for c in board] == ["issued", "accepted", "in_progress", "queued", "done", "overdue"]
+    assert [c["key"] for c in board] == ["overdue", "issued", "accepted", "in_progress", "queued", "done"]
 
 
 async def test_emergency_preempts_planned(client, h, order_payload):
@@ -176,3 +176,20 @@ async def test_photo_validation(client, h, order_payload):
     assert r.status_code == 422
     r = await upload(client, master, o["id"], "before", 1, 2, 3, 4, 5, 6)
     assert r.status_code == 422  # больше 5
+
+
+async def test_overdue_order_stays_in_its_status_column(client, h, order_payload, new_executor):
+    """Просроченный наряд в работе виден и в «В работе», и в сводке «Просроченные»."""
+    master = await h("master1")
+    ex = await new_executor()
+    o = (await client.post(f"{API}/orders", json=await order_payload(None, executor_id=ex["id"]), headers=master)).json()
+    await act(client, ex["h"], o["id"], "start")
+    async with SessionLocal() as db:
+        row = await db.get(WorkOrder, o["id"])
+        row.deadline = utcnow() - timedelta(hours=2)
+        await db.commit()
+
+    board = {c["key"]: [x["id"] for x in c["orders"]] for c in (await client.get(f"{API}/orders/board", headers=master)).json()}
+    assert o["id"] in board["in_progress"]
+    assert o["id"] in board["overdue"]
+    assert list(board)[0] == "overdue"

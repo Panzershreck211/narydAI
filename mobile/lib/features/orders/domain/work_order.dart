@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/i18n.dart';
+
 enum OrderStatus {
   issued('Выдан', Color(0xFF607D8B)),
   accepted('Принят', Color(0xFF1E88E5)),
@@ -11,8 +13,9 @@ enum OrderStatus {
   rejected('Отклонён', Color(0xFFD32F2F)),
   cancelled('Отменён', Color(0xFF9E9E9E));
 
-  const OrderStatus(this.label, this.color);
-  final String label;
+  const OrderStatus(this.labelRu, this.color);
+  final String labelRu;
+  String get label => tr(labelRu);
   final Color color;
 
   static OrderStatus parse(String v) =>
@@ -26,8 +29,9 @@ enum OrderType {
   planned('Плановый'),
   emergency('Аварийный');
 
-  const OrderType(this.label);
-  final String label;
+  const OrderType(this.labelRu);
+  final String labelRu;
+  String get label => tr(labelRu);
 }
 
 enum Priority {
@@ -36,8 +40,9 @@ enum Priority {
   high('Высокий'),
   critical('Критический');
 
-  const Priority(this.label);
-  final String label;
+  const Priority(this.labelRu);
+  final String labelRu;
+  String get label => tr(labelRu);
 }
 
 /// Действия над нарядом — совпадают с `allowed_actions` бэкенда.
@@ -47,21 +52,15 @@ enum OrderAction {
   reject('Отклонить', Icons.block, needsReason: true),
   start('Начать исполнение', Icons.play_arrow, needsReason: false),
   pause('Приостановить', Icons.pause, needsReason: true),
-  complete('Исполнено', Icons.task_alt, needsReason: false),
-  approve('Принять работу', Icons.verified, needsReason: false),
-  returnBack('Вернуть на доработку', Icons.undo, needsReason: true),
-  reassign('Переназначить', Icons.swap_horiz, needsReason: false),
-  cancel('Отменить наряд', Icons.cancel_outlined, needsReason: true);
+  complete('Исполнено', Icons.task_alt, needsReason: false);
 
-  const OrderAction(this.label, this.icon, {required this.needsReason});
-  final String label;
+  const OrderAction(this.labelRu, this.icon, {required this.needsReason});
+  final String labelRu;
+  String get label => tr(labelRu);
   final IconData icon;
   final bool needsReason;
 
-  String get apiName => this == returnBack ? 'return' : name;
-
   static OrderAction? tryParse(String v) {
-    if (v == 'return') return returnBack;
     for (final a in values) {
       if (a.name == v) return a;
     }
@@ -204,9 +203,9 @@ class AiReport {
   final String source;
 
   String get verdictLabel => switch (verdict) {
-    'ok' => 'Замечаний нет',
-    'needs_review' => 'Нужна проверка',
-    _ => 'Есть нарушения',
+    'ok' => tr('Замечаний нет'),
+    'needs_review' => tr('Нужна проверка'),
+    _ => tr('Есть нарушения'),
   };
 
   Color get color => switch (verdict) {

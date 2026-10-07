@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 
 import { useExecutors, useOrders, useReference, type OrderFilters } from '../api/hooks'
 import type { OrderStatus, OrderType } from '../api/types'
-import { ErrorBox, Spinner, StatusBadge } from '../components/ui'
+import { Empty, ErrorBox, Spinner, StatusBadge } from '../components/ui'
 import { useOpenOrder } from '../lib/useOpenOrder'
 import { fmtDateTime, ORDER_TYPE, PRIORITY, STATUS } from '../lib/labels'
+import { t } from '../i18n/lang'
 
 /** Реестр нарядов с фильтрами и выгрузкой в CSV. */
 export function OrdersPage() {
@@ -37,7 +38,7 @@ export function OrdersPage() {
   }, [data, search])
 
   const exportCsv = () => {
-    const header = ['Номер', 'Тип', 'Статус', 'Приоритет', 'Участок', 'Оборудование', 'Исполнитель', 'Срок', 'Выдан', 'Просрочен', 'Описание']
+    const header = [t('Номер'), t('Тип'), t('Статус'), t('Приоритет'), t('Участок'), t('Оборудование'), t('Исполнитель'), t('Срок'), t('Выдан'), t('Просрочен'), t('Описание')]
     const lines = rows.map((o) =>
       [
         o.number,
@@ -49,7 +50,7 @@ export function OrdersPage() {
         o.executor?.fio ?? '',
         fmtDateTime(o.deadline),
         fmtDateTime(o.created_at),
-        o.is_overdue ? 'да' : '',
+        o.is_overdue ? t('да') : '',
         o.description,
       ]
         .map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`)
@@ -67,38 +68,38 @@ export function OrdersPage() {
   return (
     <div>
       <div className="page-head">
-        <h1>Все наряды</h1>
+        <h1>{t('Все наряды')}</h1>
         <div className="page-head__spacer" />
         <button type="button" className="btn btn--ghost" onClick={exportCsv} disabled={!rows.length}>
-          Выгрузить CSV
+          {t('Выгрузить CSV')}
         </button>
       </div>
 
       <div className="filters">
-        <input type="search" placeholder="Поиск: номер, описание, оборудование, ФИО" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | '')} aria-label="Статус">
-          <option value="">Все статусы</option>
+        <input type="search" placeholder={t('Поиск: номер, описание, оборудование, ФИО')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select value={status} onChange={(e) => setStatus(e.target.value as OrderStatus | '')} aria-label={t('Статус')}>
+          <option value="">{t('Все статусы')}</option>
           {Object.entries(STATUS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
           ))}
         </select>
-        <select value={type} onChange={(e) => setType(e.target.value as OrderType | '')} aria-label="Тип">
-          <option value="">Все типы</option>
-          <option value="planned">Плановые</option>
-          <option value="emergency">Аварийные</option>
+        <select value={type} onChange={(e) => setType(e.target.value as OrderType | '')} aria-label={t('Тип')}>
+          <option value="">{t('Все типы')}</option>
+          <option value="planned">{t('Плановые')}</option>
+          <option value="emergency">{t('Аварийные')}</option>
         </select>
-        <select value={workshopId} onChange={(e) => setWorkshopId(e.target.value)} aria-label="Участок">
-          <option value="">Все участки</option>
+        <select value={workshopId} onChange={(e) => setWorkshopId(e.target.value)} aria-label={t('Участок')}>
+          <option value="">{t('Все участки')}</option>
           {workshops.data?.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
             </option>
           ))}
         </select>
-        <select value={executorId} onChange={(e) => setExecutorId(e.target.value)} aria-label="Исполнитель">
-          <option value="">Все исполнители</option>
+        <select value={executorId} onChange={(e) => setExecutorId(e.target.value)} aria-label={t('Исполнитель')}>
+          <option value="">{t('Все исполнители')}</option>
           {executors.data?.map((x) => (
             <option key={x.id} value={x.id}>
               {x.fio}
@@ -107,7 +108,7 @@ export function OrdersPage() {
         </select>
         <label className="check">
           <input type="checkbox" checked={overdue} onChange={(e) => setOverdue(e.target.checked)} />
-          Только просроченные
+          {t('Только просроченные')}
         </label>
       </div>
 
@@ -118,20 +119,20 @@ export function OrdersPage() {
           <table className="table table--hover">
             <thead>
               <tr>
-                <th>Номер</th>
-                <th>Статус</th>
-                <th>Описание</th>
-                <th>Оборудование</th>
-                <th>Исполнитель</th>
-                <th>Приоритет</th>
-                <th>Срок</th>
+                <th>{t('Номер')}</th>
+                <th>{t('Статус')}</th>
+                <th>{t('Описание')}</th>
+                <th>{t('Оборудование')}</th>
+                <th>{t('Исполнитель')}</th>
+                <th>{t('Приоритет')}</th>
+                <th>{t('Срок')}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => (
                 <tr key={o.id} onClick={() => open(o.id)} className={o.type === 'emergency' ? 'row--emergency' : undefined}>
                   <td className="nowrap">
-                    {o.type === 'emergency' && <span className="tag tag--red">А</span>} {o.number}
+                    {o.type === 'emergency' && <span className="tag tag--red" title={t('Аварийный')}>{t('А')}</span>} {o.number}
                   </td>
                   <td>
                     <StatusBadge status={o.status} />
@@ -147,7 +148,7 @@ export function OrdersPage() {
               ))}
             </tbody>
           </table>
-          {rows.length === 0 && <div className="empty">Нарядов не найдено</div>}
+          {rows.length === 0 && <Empty>{t('Нарядов не найдено')}</Empty>}
         </div>
       )}
     </div>

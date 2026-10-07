@@ -26,7 +26,7 @@ export const qk = {
   board: (workshopId?: number) => ['orders', 'board', workshopId ?? 'all'] as const,
   orders: (filters: OrderFilters) => ['orders', 'list', filters] as const,
   order: (id: number) => ['orders', 'detail', id] as const,
-  counters: ['orders', 'counters'] as const,
+  counters: (workshopId?: number) => ['orders', 'counters', workshopId ?? 'all'] as const,
   executors: ['orders', 'executors'] as const,
   ratings: (from?: string, to?: string) => ['analytics', 'ratings', from, to] as const,
   downtime: (days: number) => ['analytics', 'downtime', days] as const,
@@ -110,8 +110,13 @@ export const useOrder = (id: number | null) =>
     enabled: id !== null,
   })
 
-export const useCounters = () =>
-  useQuery({ queryKey: qk.counters, queryFn: () => api<ShiftCounters>('/dashboard/counters'), refetchInterval: 60_000 })
+/** Счётчики смены; с участком — только по нему (как и доска). */
+export const useCounters = (workshopId?: number) =>
+  useQuery({
+    queryKey: qk.counters(workshopId),
+    queryFn: () => api<ShiftCounters>('/dashboard/counters', { query: { workshop_id: workshopId } }),
+    refetchInterval: 60_000,
+  })
 
 export const useExecutors = () =>
   useQuery({ queryKey: qk.executors, queryFn: () => api<ExecutorAvailability[]>('/users/executors/availability') })
@@ -200,18 +205,6 @@ export const useDowntime = (days: number) =>
 
 export const useUsers = () =>
   useQuery({ queryKey: qk.users, queryFn: () => api<User[]>('/users') })
-
-export interface UserForm {
-  login: string
-  password: string
-  pin: string
-  fio: string
-  role: User['role']
-  specialty: string
-  grade: number | null
-  brigade_id: number | null
-  shift: User['shift']
-}
 
 export function useUserMutations() {
   const qc = useQueryClient()

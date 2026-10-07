@@ -7,7 +7,7 @@ interface NavItem {
   roles: Role[]
 }
 
-/** Меню панели и права доступа к страницам по ролям. */
+/** Меню панели и права доступа к страницам по ролям. Подписи — ключи перевода, см. t(). */
 export const NAV: NavItem[] = [
   { to: '/board', label: 'Доска нарядов', icon: '▦', roles: ['master', 'manager', 'admin'] },
   { to: '/orders', label: 'Все наряды', icon: '☰', roles: ['master', 'manager', 'admin'] },

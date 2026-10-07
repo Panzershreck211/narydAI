@@ -1,4 +1,4 @@
-"""ИИ-помощник НарядAI: чат на Claude с инструментами для чтения данных системы.
+"""ИИ-помощник НарядAI: чат на Google Gemini с инструментами для чтения данных системы.
 
 Инструменты только читают и всегда учитывают роль: исполнитель видит лишь свои
 наряды, аналитика доступна мастеру, руководителю и администратору. Ответ
@@ -7,18 +7,18 @@
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.db.base import utcnow
+from app.db.base import plant_time, utcnow
 from app.models import Equipment, FaultCode, Material, User, WorkOrder, Workshop
 from app.models.enums import OPEN_STATUSES, OrderStatus, OrderType, Role
+from app.services.ai import gemini
 from app.services.availability import executors_availability
 from app.services.orders import load_order, overdue_clause, visible_to
 
@@ -61,19 +61,28 @@ GUIDE = """\
 - Ключ ИИ-помощника задаёт администратор в «Настройках»."""
 
 
-def system_prompt(user: User, now: datetime) -> str:
+def system_prompt(user: User, now: datetime, lang: str = "ru") -> str:
+    language = (
+        "- Отвечай по-казахски (кириллицей): пользователь выбрал казахский язык интерфейса. "
+        "Номера нарядов, названия оборудования и ФИО оставляй как в данных. "
+        "Разделы интерфейса называй по-казахски, как в приложении.\n"
+        if lang == "kk"
+        else "- Отвечай по-русски.\n"
+    )
     return (
         "Ты — ИИ-помощник системы НарядAI на горно-обогатительном предприятии АО «Костанайские минералы». "
         "Помогаешь мастерам, исполнителям, руководителям и администраторам: отвечаешь на вопросы о нарядах, "
         "сменах, исполнителях, простоях и о том, как пользоваться системой.\n\n"
         "Правила:\n"
-        "- Отвечай по-русски, коротко и по делу; списки — маркерами. Номера нарядов пиши полностью (НР-2026-000012).\n"
+        f"{language}"
+        "- Отвечай коротко и по делу; списки — маркерами. Номера нарядов пиши полностью (НР-2026-000012).\n"
         "- Данные о нарядах, людях и оборудовании бери только из инструментов. Если данных нет — так и скажи.\n"
         "- Ты только читаешь данные: ничего не создаёшь и не меняешь. Если просят выдать, закрыть или "
         "отменить наряд — объясни, где это сделать в панели или приложении.\n"
         "- По технике безопасности и допускам отсылай к инструкциям предприятия, не давай опасных советов.\n\n"
         f"{GUIDE}\n\n"
-        f"Собеседник: {user.fio}, роль — {user.role.value}. Сейчас {now:%d.%m.%Y %H:%M} UTC."
+        f"Собеседник: {user.fio}, роль — {user.role.value}. Сейчас {plant_time(now, '%d.%m.%Y %H:%M')} "
+        "по времени предприятия (Костанай); все даты в данных — тоже по нему."
     )
 
 
@@ -153,8 +162,12 @@ TOOLS: list[dict[str, Any]] = [
         "input_schema": _schema(LookupIn),
     },
 ]
-for _t in TOOLS:
-    _t["eager_input_streaming"] = True
+# Объявления функций для Gemini: схема без параметров не передаётся
+FUNCTIONS: list[dict[str, Any]] = [
+    {"name": t["name"], "description": t["description"]}
+    | ({"parameters": gemini.to_schema(t["input_schema"])} if t["input_schema"].get("properties") else {})
+    for t in TOOLS
+]
 
 TOOL_LABELS = {
     "shift_summary": "Смотрю счётчики смены",
@@ -178,7 +191,7 @@ def _order_brief(o: WorkOrder, now: datetime) -> dict:
         "workshop": o.workshop.name,
         "equipment": o.equipment.name if o.equipment else None,
         "executor": o.executor.fio if o.executor else "бригада, не взят",
-        "deadline_utc": o.deadline.strftime("%d.%m %H:%M"),
+        "deadline": plant_time(o.deadline),
         "overdue": o.overdue_at(now),
         "equipment_stopped": o.equipment_stopped,
     }
@@ -260,14 +273,14 @@ class Toolbox:
         return {
             **_order_brief(order, now),
             "master": order.master.fio,
-            "created_utc": order.created_at.strftime("%d.%m %H:%M"),
+            "created": plant_time(order.created_at),
             "work_report": order.work_report,
             "fault_code": f"{order.fault_code.code} {order.fault_code.name}" if order.fault_code else None,
             "materials": [f"{m.material_name} {m.quantity:g} {m.unit}" for m in order.materials],
             "master_score": order.master_score,
             "ai_check": {"verdict": ai.verdict.value, "score": ai.score, "explanation": ai.explanation} if ai else None,
             "history": [
-                f"{e.timestamp:%d.%m %H:%M} {e.action.value}"
+                f"{plant_time(e.timestamp)} {e.action.value}"
                 + (f" → {STATUS_RU[e.to_status.value]}" if e.to_status else "")
                 + (f" ({e.reason})" if e.reason else "")
                 + (f" — {e.user.fio}" if e.user else " — ИИ")
@@ -328,19 +341,36 @@ class Toolbox:
 # ---------- диалог ----------
 
 
+MAX_MESSAGE = 4000
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=4000)
+    # Ответы модели бывают длиннее вопроса: прошлую реплику помощника обрезаем, а не отклоняем
+    # весь запрос — иначе после одного длинного ответа чат перестаёт работать
+    content: str = Field(min_length=1, max_length=50_000)
+
+    @model_validator(mode="after")
+    def _limit(self):
+        if self.role == "user" and len(self.content) > MAX_MESSAGE:
+            raise ValueError(f"Вопрос длиннее {MAX_MESSAGE} символов")
+        if len(self.content) > MAX_MESSAGE:
+            self.content = self.content[:MAX_MESSAGE] + "…"
+        return self
+
+
+def context_window(history: list[ChatMessage], turns: int = 20) -> list[ChatMessage]:
+    """Последние реплики для модели; Gemini ждёт, что диалог начинается с пользователя."""
+    recent = history[-turns:]
+    while recent and recent[0].role != "user":
+        recent = recent[1:]
+    return recent
 
 
 ChatEvent = dict[str, Any]
-ClientFactory = Callable[[str], Any]
 
-
-def _default_client(api_key: str):
-    import anthropic
-
-    return anthropic.AsyncAnthropic(api_key=api_key, timeout=120.0)
+# Причины остановки, при которых Gemini не дал ответа по соображениям безопасности
+BLOCKED = {"BLOCKED", "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION", "IMAGE_SAFETY"}
 
 
 async def chat(
@@ -348,75 +378,63 @@ async def chat(
     user: User,
     history: list[ChatMessage],
     api_key: str,
-    client_factory: ClientFactory | None = None,
+    client_factory: gemini.ClientFactory | None = None,
+    lang: str = "ru",
 ) -> AsyncIterator[ChatEvent]:
     """Стримит события: text (кусок ответа), tool (идёт поиск данных), error, done."""
-    import anthropic
-
     tools = Toolbox(db, user)
-    # Прошлые реплики — только текст: блоки размышлений и вызовов инструментов
-    # прошлых запросов не пересылаем (они живут в рамках одного запроса).
-    messages: list[dict[str, Any]] = [{"role": m.role, "content": m.content} for m in history[-20:]]
-    system = system_prompt(user, utcnow())
-    json_retries = 0
+    # Прошлые реплики — только текст: вызовы функций прошлых запросов не пересылаем
+    contents: list[dict[str, Any]] = [
+        {"role": "user" if m.role == "user" else "model", "parts": [{"text": m.content}]}
+        for m in context_window(history)
+    ]
+    body: dict[str, Any] = {
+        "systemInstruction": {"parts": [{"text": system_prompt(user, utcnow(), lang)}]},
+        "contents": contents,
+        "tools": [{"functionDeclarations": FUNCTIONS}],
+        "generationConfig": {"maxOutputTokens": 8000},
+    }
 
-    async with (client_factory or _default_client)(api_key) as client:
-        for _ in range(MAX_TOOL_ROUNDS):
-            try:
-                async with client.beta.messages.stream(
-                    model=settings.llm_model,
-                    max_tokens=8000,
-                    system=system,
-                    tools=TOOLS,
-                    messages=messages,
-                    output_config={"effort": "low"},
-                    betas=["server-side-fallback-2026-07-01"],
-                    fallbacks="default",
-                ) as stream:
-                    async for event in stream:
-                        if event.type == "text":
-                            yield {"type": "text", "text": event.text}
-                    response = await stream.get_final_message()
-                json_retries = 0
-            except ValueError:
-                # Вход инструмента пришёл неразбираемым JSON — повторяем ход (ограниченно)
-                json_retries += 1
-                if json_retries > 2:
-                    yield {"type": "error", "message": "Не удалось разобрать ответ модели, попробуйте ещё раз"}
-                    return
-                continue
-            except anthropic.AuthenticationError:
-                yield {"type": "error", "message": "Ключ ИИ недействителен — администратору нужно обновить его в «Настройках»"}
-                return
-            except anthropic.RateLimitError:
-                yield {"type": "error", "message": "ИИ-сервис перегружен, повторите через минуту"}
-                return
-            except anthropic.APIConnectionError:
-                yield {"type": "error", "message": "Нет связи с ИИ-сервисом"}
-                return
-            except anthropic.APIStatusError as e:
-                log.warning("assistant API error %s: %s", e.status_code, e.message)
-                yield {"type": "error", "message": f"Ошибка ИИ-сервиса ({e.status_code})"}
-                return
+    for _ in range(MAX_TOOL_ROUNDS):
+        parts: list[dict[str, Any]] = []
+        finish: str | None = None
+        try:
+            async for chunk in gemini.stream_generate(api_key, body, client_factory):
+                new, reason = gemini.candidate(chunk)
+                finish = reason or finish
+                for part in new:
+                    parts.append(part)
+                    if part.get("text") and not part.get("thought"):
+                        yield {"type": "text", "text": part["text"]}
+        except gemini.GeminiError as e:
+            yield {"type": "error", "message": e.message}
+            return
 
-            if response.stop_reason == "refusal":
+        calls = [p["functionCall"] for p in parts if "functionCall" in p]
+        if not calls:
+            if finish in BLOCKED:
                 yield {"type": "error", "message": "Помощник не может ответить на этот запрос"}
-                return
-            tool_uses = [b for b in response.content if b.type == "tool_use"]
-            if not tool_uses:
-                yield {"type": "done"}
-                return
-            if response.stop_reason == "max_tokens":
+            elif finish == "MAX_TOKENS":
                 yield {"type": "error", "message": "Ответ получился слишком длинным, уточните вопрос"}
-                return
+            else:
+                yield {"type": "done"}
+            return
 
-            results = []
-            for block in tool_uses:
-                yield {"type": "tool", "name": block.name, "label": TOOL_LABELS.get(block.name, "Смотрю данные")}
-                content, is_error = await tools.run(block.name, block.input)
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": content, "is_error": is_error})
-            # Ответ модели добавляем без изменений (в т.ч. блоки размышлений) — история только дописывается
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": results})
+        responses = []
+        for call in calls:
+            name = call.get("name", "")
+            yield {"type": "tool", "name": name, "label": TOOL_LABELS.get(name, "Смотрю данные")}
+            content, is_error = await tools.run(name, call.get("args") or {})
+            try:
+                data: Any = json.loads(content)
+            except ValueError:
+                data = content
+            response = {"name": name, "response": {"error" if is_error else "result": data}}
+            if call.get("id"):
+                response["id"] = call["id"]
+            responses.append({"functionResponse": response})
+        # Ход модели возвращаем без изменений (в нём подписи размышлений), затем результаты функций
+        contents.append({"role": "model", "parts": parts})
+        contents.append({"role": "user", "parts": responses})
 
     yield {"type": "error", "message": "Слишком много шагов поиска — сформулируйте вопрос конкретнее"}

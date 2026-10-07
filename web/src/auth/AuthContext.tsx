@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { api, ApiError, setSessionExpiredHandler, tokens } from '../api/client'
 import type { TokenPair, User } from '../api/types'
 import { AuthContext, PANEL_ROLES } from './useAuth'
+import { t } from '../i18n/lang'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
@@ -30,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Разлогиниваем только если сервер отверг токен (401 после неудачного refresh —
         // это уже сделал api()). Сеть/5xx — временно: сессию сохраняем, показываем ошибку.
         if (e instanceof ApiError && e.status === 401) logout()
-        else setError(e instanceof Error ? e.message : 'Сервер недоступен')
+        else setError(e instanceof Error ? e.message : t('Сервер недоступен'))
       })
       .finally(() => setLoading(false))
   }, [logout, attempt])
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (login: string, password: string) => {
     const pair = await api<TokenPair>('/auth/login', { body: { login, password }, auth: false })
     if (!PANEL_ROLES.includes(pair.user.role)) {
-      throw new Error('Исполнители работают в мобильном приложении НарядAI')
+      throw new Error(t('Исполнители работают в мобильном приложении НарядAI'))
     }
     tokens.save(pair)
     setError(null)

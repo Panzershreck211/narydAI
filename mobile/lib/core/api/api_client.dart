@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config.dart';
+import '../i18n/i18n.dart';
 import '../storage/token_storage.dart';
 
 /// Dio с JWT: подставляет access-токен, при 401 один раз обновляет его через
@@ -36,6 +37,8 @@ class ApiClient {
     if (token != null && options.extra['noAuth'] != true) {
       options.headers['Authorization'] = 'Bearer $token';
     }
+    // сервер отдаёт свои тексты (ошибки, уведомления, журнал) на языке интерфейса
+    options.headers['Accept-Language'] = currentLang.name;
     handler.next(options);
   }
 

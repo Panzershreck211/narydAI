@@ -28,7 +28,7 @@ async def run_rules_check(db: AsyncSession, order: WorkOrder) -> AIReport:
 
 
 async def run_llm_enrichment(order_id: int) -> None:
-    """Фоновая задача после закрытия наряда: уточняет оценку через Claude и уведомляет мастера."""
+    """Фоновая задача после закрытия наряда: уточняет оценку через Gemini и уведомляет мастера."""
     async with SessionLocal() as db:
         api_key, _ = await get_api_key(db)
         if not api_key:

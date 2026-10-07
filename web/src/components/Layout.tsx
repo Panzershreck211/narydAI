@@ -7,6 +7,8 @@ import { useRealtime } from '../lib/useRealtime'
 import { AssistantChat } from './AssistantChat'
 import { NotificationsBell } from './NotificationsBell'
 import { OrderDrawer } from './OrderDrawer'
+import { t } from '../i18n/lang'
+import { LangSwitch } from '../i18n/LangSwitch'
 
 export function Layout() {
   const user = useUser()
@@ -15,12 +17,12 @@ export function Layout() {
 
   return (
     <div className="shell">
-      <nav className="sidebar" aria-label="Разделы">
+      <nav className="sidebar" aria-label={t('Разделы')}>
         <div className="brand">
           <span className="brand__logo">Н</span>
           <span>
             НарядAI
-            <small>Костанайские минералы</small>
+            <small>{t('Костанайские минералы')}</small>
           </span>
         </div>
         <ul>
@@ -30,14 +32,14 @@ export function Layout() {
                 <span className="nav__icon" aria-hidden>
                   {n.icon}
                 </span>
-                {n.label}
+                {t(n.label)}
               </NavLink>
             </li>
           ))}
         </ul>
         <div className="sidebar__foot">
           <span className={`live live--${realtime}`}>
-            {realtime === 'online' ? 'онлайн' : realtime === 'connecting' ? 'подключение…' : 'нет связи'}
+            {realtime === 'online' ? t('онлайн') : realtime === 'connecting' ? t('подключение…') : t('нет связи')}
           </span>
         </div>
       </nav>
@@ -45,13 +47,14 @@ export function Layout() {
       <div className="main">
         <header className="topbar">
           <div className="topbar__spacer" />
+          <LangSwitch />
           <NotificationsBell />
           <div className="me">
             <b>{user.fio}</b>
             <small>{ROLE[user.role]}</small>
           </div>
           <button type="button" className="btn btn--ghost btn--sm" onClick={logout}>
-            Выйти
+            {t('Выйти')}
           </button>
         </header>
         <main className="content">

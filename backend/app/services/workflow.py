@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.models import OrderEvent, User, WorkOrder
-from app.models.enums import FINAL_STATUSES, OrderAction, OrderStatus, OrderType, Role
+from app.models.enums import ACTION_RU, FINAL_STATUSES, STATUS_RU, OrderAction, OrderStatus, OrderType, Role
 
 S = OrderStatus
 EXECUTOR = frozenset({Role.EXECUTOR})
@@ -102,7 +102,7 @@ async def apply_transition(
     """Проверяет права и переход, меняет статус и пишет событие. Возвращает прежний статус."""
     tr = TRANSITIONS.get(action)
     if tr is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Неизвестное действие: {action}")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестное действие")
     if user.role not in tr.roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Действие недоступно для вашей роли")
     if user.role == Role.EXECUTOR and not is_assignee(order, user):
@@ -110,7 +110,7 @@ async def apply_transition(
     if order.status not in tr.sources:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            f"Нельзя выполнить «{action.value}» из статуса «{order.status.value}»",
+            f"Нельзя выполнить «{ACTION_RU.get(action, action.value)}» из статуса «{STATUS_RU[order.status]}»",
         )
     reason = (reason or "").strip() or None
     if tr.reason_required and not reason:

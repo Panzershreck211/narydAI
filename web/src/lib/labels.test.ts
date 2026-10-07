@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { timeLeft, toLocalInput } from './labels'
+import { eventTitle, timeLeft, toLocalInput } from './labels'
+
+describe('eventTitle', () => {
+  it('показывает новый статус, только если он добавляет смысл', () => {
+    expect(eventTitle('return', 'in_progress')).toBe('Возвращён на доработку → В работе')
+    expect(eventTitle('cancel', 'cancelled')).toBe('Отменён') // не «Отменён → Отменён»
+    expect(eventTitle('reject', 'rejected')).toBe('Отклонён')
+    expect(eventTitle('create', 'issued')).toBe('Наряд выдан')
+    expect(eventTitle('ai_check', null)).toBe('ИИ-проверка')
+    expect(eventTitle('future_action', null)).toBe('future_action')
+  })
+})
 
 describe('timeLeft', () => {
   const now = new Date('2026-10-05T10:00:00Z').getTime()

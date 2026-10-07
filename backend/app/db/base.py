@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase
@@ -37,3 +37,10 @@ def utcnow() -> datetime:
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING)
     type_annotation_map = {datetime: UTCDateTime}
+
+
+def plant_time(dt: datetime, fmt: str = "%d.%m %H:%M") -> str:
+    """Время для людей — по часовому поясу предприятия (в уведомлениях, журнале)."""
+    from app.core.config import settings
+
+    return dt.astimezone(timezone(timedelta(hours=settings.plant_utc_offset_hours))).strftime(fmt)

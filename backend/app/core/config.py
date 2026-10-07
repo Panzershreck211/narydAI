@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # env_ignore_empty: пустые строки в .env (FCM_CREDENTIALS_FILE=) считаются «не задано»
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True)
 
     app_name: str = "НарядAI"
     api_prefix: str = "/api/v1"
@@ -15,7 +16,9 @@ class Settings(BaseSettings):
     # MVP: таблицы создаются при старте. В проде заменить на Alembic-миграции.
     auto_create_tables: bool = True
 
-    jwt_secret: str = "change-me-in-production-please-32+chars"
+    # Пусто или заглушка из .env.example — при первом старте API сгенерирует случайный ключ
+    # и сохранит его в БД (app_settings), см. app.core.security.ensure_jwt_secret.
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60 * 12  # смена
     refresh_token_days: int = 14
@@ -39,9 +42,13 @@ class Settings(BaseSettings):
     reminder_before_min: int = 30
     ai_monitor_enabled: bool = True
 
-    # Опциональная LLM-проверка (Claude). Без ключа работают только правила.
-    anthropic_api_key: str | None = None
-    llm_model: str = "claude-opus-5-5"
+    # ИИ-помощник и смысловая проверка нарядов — Google Gemini (бесплатный ключ из Google AI Studio).
+    # Без ключа помощник выключен, а наряды проверяются только правилами.
+    gemini_api_key: str | None = None
+    llm_model: str = "gemini-3.5-flash"
+    # если основная модель перегружена/в лимите — запрос уходит следующей
+    llm_fallback_models: list[str] = ["gemini-3.5-flash-lite", "gemini-3.7-flash"]
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
 
     # Push (FCM). Без файла сервисного аккаунта пуши только логируются.
     fcm_credentials_file: Path | None = None

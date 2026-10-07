@@ -608,6 +608,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-x: hidden;
   max-height: calc(100vh - 380px);
   min-height: 60px;
   overflow-y: auto;
@@ -643,6 +644,7 @@ textarea {
 .ocard__top {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .ocard__num {
@@ -688,6 +690,14 @@ textarea {
   gap: 8px;
   cursor: pointer;
   white-space: nowrap;
+}
+.form .check {
+  white-space: normal;
+  align-items: flex-start;
+}
+.form .check input {
+  margin-top: 2px;
+  flex: none;
 }
 .check input {
   width: 16px;
@@ -760,29 +770,36 @@ textarea {
 .rank--3 {
   color: #a1662f;
 }
-.table td.bar-cell {
-  position: relative;
-  min-width: 140px;
-  vertical-align: middle;
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
 }
-.bar-cell b {
-  position: relative;
+.meter__value {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.bar {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  height: 18px;
-  transform: translateY(-50%);
-  max-width: calc(100% - 24px);
-  background: var(--primary-soft);
+.meter__track {
+  flex: 1;
+  height: 8px;
   border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
 }
-.bar--orange {
-  background: color-mix(in srgb, var(--orange) 22%, transparent);
+.meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
 }
-.bar-cell b {
-  padding-left: 6px;
+.meter__fill--orange {
+  background: var(--orange);
+}
+.panel__scroll {
+  overflow-x: auto;
+  margin: 0 -4px;
 }
 
 .panel {
@@ -1394,35 +1411,115 @@ details summary {
   }
 }
 @media (max-width: 760px) {
+  /* minmax(0, 1fr): колонка не растягивается под содержимое — страница не шире экрана */
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .main,
+  .sidebar {
+    min-width: 0;
   }
   .sidebar {
     position: static;
     height: auto;
   }
+  .brand {
+    padding: 12px 16px 4px;
+  }
+  /* меню — одна прокручиваемая строка */
   .sidebar ul {
     display: flex;
+    gap: 4px;
+    margin: 4px 0 8px;
+    padding: 0 12px;
     overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sidebar ul::-webkit-scrollbar {
+    display: none;
+  }
+  .nav {
+    white-space: nowrap;
+    padding: 8px 12px;
   }
   .sidebar__foot {
     display: none;
   }
-  .content {
-    padding: 16px;
-  }
   .topbar {
-    padding: 0 16px;
+    height: 48px;
+    padding: 0 12px;
   }
   .me {
     display: none;
+  }
+  .content {
+    padding: 14px 12px 90px; /* снизу место под кнопку помощника */
+  }
+  .page-head h1 {
+    font-size: 19px;
+  }
+  .page-head .select--inline {
+    min-width: 0;
+    flex: 1;
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stat__value {
+    font-size: 22px;
+  }
+  .people__legend {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .person {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .kanban {
+    grid-auto-columns: minmax(0, 84vw);
+    scroll-snap-type: x mandatory;
+  }
+  .kanban__col {
+    scroll-snap-align: start;
+  }
+  .kanban__list {
+    max-height: none;
+  }
+  .filters > * {
+    flex: 1 1 100%;
+    max-width: none !important;
+  }
+  .filters .check {
+    flex: 0 0 auto;
   }
   .form__row,
   .form__row--3 {
     grid-template-columns: 1fr;
   }
-  .kanban__list {
-    max-height: none;
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .drawer {
+    width: 100vw;
+  }
+  .props {
+    grid-template-columns: 110px minmax(0, 1fr);
+  }
+  .bell__panel {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    top: 52px;
+    width: auto;
+  }
+  .modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+  .modal__body {
+    padding: 14px;
   }
 }
 
@@ -1632,4 +1729,59 @@ details summary {
 .settings__help ol {
   padding-left: 20px;
   line-height: 1.7;
+}
+
+/* Переключатель языка «Қаз / Рус» */
+.langswitch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+}
+.langswitch__btn {
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.langswitch__btn + .langswitch__btn {
+  border-left: 1px solid var(--border);
+}
+.langswitch__btn.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+.langswitch__btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.login .langswitch {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+/* Мобильные правила для элементов, объявленных выше по файлу (порядок важен) */
+@media (max-width: 760px) {
+  .assistant {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+  }
+  .assistant-fab {
+    right: 12px;
+    bottom: 12px;
+  }
+  .toasts {
+    right: 8px;
+    left: 8px;
+    bottom: 76px;
+    width: auto;
+  }
 }

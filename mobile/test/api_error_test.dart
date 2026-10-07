@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:naryad_ai/core/api/api_error.dart';
-import 'package:naryad_ai/core/router/app_router.dart';
 import 'package:naryad_ai/features/auth/domain/app_user.dart';
 
 DioException _http(int code, Object? data) {
@@ -100,12 +99,5 @@ void main() {
       });
       expect(u.shortName, 'Администратор');
     });
-  });
-
-  test('стартовый экран по роли', () {
-    expect(homeFor(Role.executor), '/orders');
-    expect(homeFor(Role.master), '/board');
-    expect(homeFor(Role.manager), '/analytics');
-    expect(homeFor(Role.admin), '/admin');
   });
 }

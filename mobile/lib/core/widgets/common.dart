@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../api/api_error.dart';
+import '../i18n/i18n.dart';
 
 final dateTimeFmt = DateFormat('dd.MM HH:mm');
 
@@ -50,7 +51,7 @@ class ErrorView extends StatelessWidget {
             const SizedBox(height: 12),
             FilledButton.tonal(
               onPressed: onRetry,
-              child: const Text('Повторить'),
+              child: Text(tr('Повторить')),
             ),
           ],
         ],
@@ -79,15 +80,15 @@ Future<String?> askReason(BuildContext context, String title) {
         controller: ctrl,
         autofocus: true,
         maxLines: 3,
-        decoration: const InputDecoration(
-          hintText: 'Укажите причину',
+        decoration: InputDecoration(
+          hintText: tr('Укажите причину'),
           border: OutlineInputBorder(),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('Отмена'),
+          child: Text(tr('Отмена')),
         ),
         FilledButton(
           onPressed: () {
@@ -95,7 +96,7 @@ Future<String?> askReason(BuildContext context, String title) {
               Navigator.pop(ctx, ctrl.text.trim());
             }
           },
-          child: const Text('OK'),
+          child: Text(tr('Подтвердить')),
         ),
       ],
     ),
@@ -107,6 +108,10 @@ String timeLeft(DateTime deadline, [DateTime? now]) {
   final diff = deadline.difference(now ?? DateTime.now()).inMinutes;
   final abs = diff.abs();
   final h = abs ~/ 60, m = abs % 60;
-  final text = h > 0 ? '$h ч $m мин' : '$m мин';
-  return diff >= 0 ? 'осталось $text' : 'просрочен на $text';
+  final text = h > 0
+      ? tr('{h} ч {m} мин', {'h': h, 'm': m})
+      : tr('{m} мин', {'m': m});
+  return diff >= 0
+      ? tr('осталось {text}', {'text': text})
+      : tr('просрочен на {text}', {'text': text});
 }

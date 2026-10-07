@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from app.core.i18n import Lang, get_lang, tr
 from app.models.enums import Role
 
 log = logging.getLogger(__name__)
@@ -22,14 +23,17 @@ class ConnectionManager:
         self._by_user: dict[int, set[WebSocket]] = defaultdict(set)
         self._roles: dict[int, Role] = {}
         self._brigades: dict[int, int | None] = {}
+        self._langs: dict[WebSocket, Lang] = {}
 
     async def connect(self, ws: WebSocket, user_id: int, role: Role, brigade_id: int | None) -> None:
         await ws.accept()
+        self._langs[ws] = get_lang()  # ?lang= при подключении (см. LangMiddleware)
         self._by_user[user_id].add(ws)
         self._roles[user_id] = role
         self._brigades[user_id] = brigade_id
 
     def disconnect(self, ws: WebSocket, user_id: int) -> None:
+        self._langs.pop(ws, None)
         conns = self._by_user.get(user_id)
         if conns:
             conns.discard(ws)
@@ -41,7 +45,14 @@ class ConnectionManager:
     async def send_to_users(self, user_ids: set[int], message: dict[str, Any]) -> None:
         sockets = [ws for uid in user_ids for ws in self._by_user.get(uid, ())]
         if sockets:
-            await asyncio.gather(*(self._safe_send(ws, message) for ws in sockets))
+            await asyncio.gather(*(self._safe_send(ws, self._localized(message, ws)) for ws in sockets))
+
+    def _localized(self, message: dict[str, Any], ws: WebSocket) -> dict[str, Any]:
+        n = message.get("notification")
+        lang = self._langs.get(ws, "ru")
+        if not n or lang == "ru":
+            return message
+        return {**message, "notification": {**n, "title": tr(n["title"], lang), "body": tr(n["body"], lang)}}
 
     async def broadcast_order(
         self, message: dict[str, Any], executor_id: int | None, brigade_id: int | None

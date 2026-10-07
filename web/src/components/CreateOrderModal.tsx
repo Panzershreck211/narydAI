@@ -6,6 +6,7 @@ import { AVAILABILITY, PRIORITY, toLocalInput } from '../lib/labels'
 import { useToast } from './useToast'
 import { AvailabilityDot, Field, Modal } from './ui'
 import { useOpenOrder } from '../lib/useOpenOrder'
+import { t } from '../i18n/lang'
 
 const AVAIL_ORDER = { free: 0, queued: 1, busy: 2, off_shift: 3 } as const
 const hoursFromNow = (h: number) => toLocalInput(new Date(Date.now() + h * 3600_000))
@@ -52,9 +53,9 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
     (a, b) => AVAIL_ORDER[a.availability] - AVAIL_ORDER[b.availability] || a.fio.localeCompare(b.fio),
   )
 
-  const setEmergency = (t: OrderType) => {
-    setType(t)
-    if (t === 'emergency') {
+  const setEmergency = (kind: OrderType) => {
+    setType(kind)
+    if (kind === 'emergency') {
       setPriority('critical')
       setDeadline(hoursFromNow(2))
       setStopped(true)
@@ -67,7 +68,7 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
     e?.preventDefault()
     if (!valid || create.isPending) return
     if (new Date(deadline) <= new Date()) {
-      toast.push({ kind: 'error', title: 'Срок исполнения должен быть в будущем' })
+      toast.push({ kind: 'error', title: t('Срок исполнения должен быть в будущем') })
       return
     }
     const [kind, rawId] = assignee.split(':')
@@ -88,7 +89,7 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
       },
       {
         onSuccess: (order) => {
-          toast.success(`Наряд ${order.number} выдан`)
+          toast.success(t('Наряд {number} выдан', { number: order.number ?? '' }))
           onClose()
           openOrder(order.id)
         },
@@ -99,14 +100,14 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="Новый наряд"
+      title={t('Новый наряд')}
       wide
       onClose={onClose}
       footer={
         <>
           <span className="muted kbd-hint">Ctrl + Enter</span>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button
             type="submit"
@@ -114,7 +115,7 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
             className={`btn ${type === 'emergency' ? 'btn--danger' : 'btn--primary'}`}
             disabled={!valid || create.isPending}
           >
-            {create.isPending ? 'Выдаю…' : type === 'emergency' ? 'Выдать аварийный наряд' : 'Выдать наряд'}
+            {create.isPending ? t('Выдаю…') : type === 'emergency' ? t('Выдать аварийный наряд') : t('Выдать наряд')}
           </button>
         </>
       }
@@ -125,33 +126,33 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
         onSubmit={submit}
         onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && submit()}
       >
-        <div className="segmented" role="radiogroup" aria-label="Тип работ">
-          {(['planned', 'emergency'] as const).map((t) => (
+        <div className="segmented" role="radiogroup" aria-label={t('Тип работ')}>
+          {(['planned', 'emergency'] as const).map((kind) => (
             <button
-              key={t}
+              key={kind}
               type="button"
               role="radio"
-              aria-checked={type === t}
-              className={`segmented__item${type === t ? ' is-active' : ''}${t === 'emergency' ? ' segmented__item--red' : ''}`}
-              onClick={() => setEmergency(t)}
+              aria-checked={type === kind}
+              className={`segmented__item${type === kind ? ' is-active' : ''}${kind === 'emergency' ? ' segmented__item--red' : ''}`}
+              onClick={() => setEmergency(kind)}
             >
-              {t === 'planned' ? 'Плановый' : '⚠ Аварийный'}
+              {kind === 'planned' ? t('Плановый') : t('⚠ Аварийный')}
             </button>
           ))}
         </div>
 
-        <Field label="Описание проблемы">
+        <Field label={t('Описание проблемы')}>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            placeholder="Что случилось, где, признаки неисправности"
+            placeholder={t('Что случилось, где, признаки неисправности')}
             autoFocus
           />
         </Field>
 
         <div className="form__row">
-          <Field label="Участок">
+          <Field label={t('Участок')}>
             <select
               value={workshopId}
               onChange={(e) => {
@@ -160,7 +161,7 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
               }}
               required
             >
-              <option value="">— выберите —</option>
+              <option value="">{t('— выберите —')}</option>
               {workshops.data?.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name}
@@ -168,23 +169,23 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </Field>
-          <Field label="Оборудование">
+          <Field label={t('Оборудование')}>
             <select
               value={equipmentId}
               onChange={(e) => setEquipmentId(e.target.value ? Number(e.target.value) : '')}
               disabled={workshopId === ''}
             >
-              <option value="">— не указано —</option>
+              <option value="">{t('— не указано —')}</option>
               {eqList.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.name} · {e.inventory_number} · кат. {e.criticality}
+                  {e.name} · {e.inventory_number} · {t('кат. {c}', { c: e.criticality })}
                 </option>
               ))}
             </select>
           </Field>
         </div>
 
-        <Field label="Исполнитель">
+        <Field label={t('Исполнитель')}>
           <div className="assignees">
             {sortedExecutors.map((x) => (
               <button
@@ -193,13 +194,12 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
                 className={`assignee${assignee === `u:${x.id}` ? ' is-active' : ''}`}
                 onClick={() => setAssignee(`u:${x.id}`)}
                 aria-label={`${x.fio}, ${AVAILABILITY[x.availability].toLowerCase()}`}
-                title={`${AVAILABILITY[x.availability]} · в работе ${x.active_orders}, ждут ${x.queued_orders}`}
+                title={t('{v} · в работе {active_orders}, ждут {queued_orders}', { v: AVAILABILITY[x.availability], active_orders: x.active_orders, queued_orders: x.queued_orders })}
               >
                 <AvailabilityDot value={x.availability} />
                 <span className="assignee__name">{x.fio}</span>
                 <span className="assignee__spec">
-                  {x.specialty}
-                  {x.grade ? `, ${x.grade} разр.` : ''}
+                  {[x.specialty, x.grade && t('{grade} разр.', { grade: x.grade })].filter(Boolean).join(', ')}
                 </span>
               </button>
             ))}
@@ -211,14 +211,14 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
                 onClick={() => setAssignee(`b:${b.id}`)}
               >
                 <span className="assignee__name">👥 {b.name}</span>
-                <span className="assignee__spec">возьмёт первый свободный</span>
+                <span className="assignee__spec">{t('возьмёт первый свободный')}</span>
               </button>
             ))}
           </div>
         </Field>
 
         <div className="form__row">
-          <Field label="Приоритет">
+          <Field label={t('Приоритет')}>
             <div className="segmented segmented--sm">
               {(Object.keys(PRIORITY) as Priority[]).map((p) => (
                 <button
@@ -232,16 +232,16 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </Field>
-          <Field label="Срок исполнения">
+          <Field label={t('Срок исполнения')}>
             <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} required />
             <div className="quick">
               {[1, 2, 4, 8].map((h) => (
                 <button key={h} type="button" className="chip" onClick={() => setDeadline(hoursFromNow(h))}>
-                  +{h} ч
+                  +{t('{h} ч', { h })}
                 </button>
               ))}
               <button type="button" className="chip" onClick={() => setDeadline(shiftEnd())}>
-                до конца смены
+                {t('до конца смены')}
               </button>
             </div>
           </Field>
@@ -249,10 +249,10 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
 
         <label className="check">
           <input type="checkbox" checked={stopped} onChange={(e) => setStopped(e.target.checked)} />
-          Оборудование остановлено (учитывается в простое)
+          {t('Оборудование остановлено (учитывается в простое)')}
         </label>
 
-        <Field label={`Фото «до» (${photos.length}/5)`}>
+        <Field label={t('Фото «до» ({length}/5)', { length: photos.length })}>
           <div className="photos">
             {previews.map((src, i) => (
               <div key={src} className="photos__item">
@@ -260,7 +260,7 @@ export function CreateOrderModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   className="photos__remove"
-                  aria-label="Убрать фото"
+                  aria-label={t('Убрать фото')}
                   onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
                 >
                   ✕

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/theme/app_theme.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_repository.dart';
@@ -92,22 +93,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const BrandMark(
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: LangButton(),
+                      ),
+                      const SizedBox(height: 8),
+                      BrandMark(
                         big: true,
-                        subtitle: 'Приложение исполнителя',
+                        subtitle: tr('Приложение исполнителя'),
                       ),
                       const SizedBox(height: 22),
                       SegmentedButton<bool>(
                         showSelectedIcon: false,
-                        segments: const [
+                        segments: [
                           ButtonSegment(
                             value: true,
-                            label: Text('ПИН-код'),
+                            label: Text(tr('ПИН-код')),
                             icon: Icon(Icons.pin_outlined, size: 18),
                           ),
                           ButtonSegment(
                             value: false,
-                            label: Text('Пароль'),
+                            label: Text(tr('Пароль')),
                             icon: Icon(Icons.password, size: 18),
                           ),
                         ],
@@ -116,13 +122,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             setState(() => _pinMode = s.first),
                       ),
                       const SizedBox(height: 18),
-                      label(_pinMode ? 'Табельный номер' : 'Логин'),
+                      label(_pinMode ? tr('Табельный номер') : tr('Логин')),
                       TextField(
                         controller: _login,
                         textInputAction: TextInputAction.next,
                       ),
                       const SizedBox(height: 14),
-                      label(_pinMode ? 'ПИН' : 'Пароль'),
+                      label(_pinMode ? tr('ПИН') : tr('Пароль')),
                       if (_pinMode)
                         TextField(
                           controller: _pin,
@@ -163,7 +169,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   color: c.primaryInk,
                                 ),
                               )
-                            : const Text('Войти'),
+                            : Text(tr('Войти')),
                       ),
                     ],
                   ),

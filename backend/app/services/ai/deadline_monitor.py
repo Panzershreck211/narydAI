@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.base import utcnow
+from app.db.base import plant_time, utcnow
 from app.db.session import SessionLocal
 from app.models import User, WorkOrder
 from app.models.enums import OPEN_STATUSES, OrderAction, OrderStatus, OrderType
@@ -28,6 +28,12 @@ from app.services.workflow import log_event
 log = logging.getLogger(__name__)
 
 DEFAULT_DURATION = {OrderType.EMERGENCY: timedelta(hours=2), OrderType.PLANNED: timedelta(hours=4)}
+def human_minutes(minutes: int) -> str:
+    """2374 → «39 ч 34 мин» — как отсчёт на карточках."""
+    hours, mins = divmod(minutes, 60)
+    return f"{hours} ч {mins} мин" if hours else f"{mins} мин"
+
+
 NOT_STARTED = {OrderStatus.ISSUED, OrderStatus.ACCEPTED, OrderStatus.QUEUED, OrderStatus.REJECTED}
 MIN_SAMPLES = 3
 
@@ -77,6 +83,9 @@ async def check_deadlines(db: AsyncSession, now: datetime | None = None) -> int:
                 WorkOrder.status.in_(OPEN_STATUSES),
                 ~(WorkOrder.reminder_sent & WorkOrder.overdue_notified & WorkOrder.risk_notified),
             )
+            # наряды, которые прямо сейчас меняет мастер/исполнитель, проверим на следующем проходе —
+            # иначе монитор перезапишет только что сброшенные флаги нового срока
+            .with_for_update(of=WorkOrder, skip_locked=True)
         )
     ).unique().all()
     if not orders:
@@ -85,19 +94,22 @@ async def check_deadlines(db: AsyncSession, now: datetime | None = None) -> int:
     model = await DurationModel.load(db)
     changed: dict[int, WorkOrder] = {}
     for order in orders:
-        executor = await db.get(User, order.executor_id) if order.executor_id else None
+        # Отклонивший наряд исполнитель за него больше не отвечает — тревоги идут мастерам,
+        # которые должны его переназначить.
+        rejected = order.status == OrderStatus.REJECTED
+        executor = await db.get(User, order.executor_id) if order.executor_id and not rejected else None
         left = order.deadline - now
 
         if left <= timedelta(0) and not order.overdue_notified:
             order.overdue_notified = order.reminder_sent = order.risk_notified = True
             late = int(-left.total_seconds() // 60)
-            log_event(db, order, None, OrderAction.OVERDUE, reason=f"Просрочен на {late} мин")
+            log_event(db, order, None, OrderAction.OVERDUE, reason=f"Просрочен на {human_minutes(late)}")
             await notify(
                 db,
                 [executor, *await staff_to_alert(db, order)],
                 kind="overdue",
                 title=f"Просрочен наряд {order.number}",
-                body=f"{order.description[:120]} — срок истёк {order.deadline:%d.%m %H:%M} UTC",
+                body=f"{order.description[:120]} — срок истёк {plant_time(order.deadline)}",
                 order=order,
                 emergency=True,
             )
@@ -128,7 +140,7 @@ async def check_deadlines(db: AsyncSession, now: datetime | None = None) -> int:
             if eta > order.deadline:
                 order.risk_notified = True
                 minutes = int(expected.total_seconds() // 60)
-                reason = f"Прогноз длительности {minutes} мин, ожидаемое окончание {eta:%H:%M} UTC позже срока"
+                reason = f"Прогноз длительности {minutes} мин, ожидаемое окончание {plant_time(eta, '%H:%M')} позже срока"
                 log_event(db, order, None, OrderAction.RISK, reason=reason)
                 await notify(
                     db,

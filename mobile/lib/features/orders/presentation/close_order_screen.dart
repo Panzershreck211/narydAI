@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/widgets/common.dart';
 import '../../references/data/references_repository.dart';
 import '../../references/domain/references.dart';
@@ -26,6 +27,19 @@ class CloseOrderScreen extends ConsumerStatefulWidget {
 class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
   final _report = TextEditingController();
   final _speech = SpeechToText();
+
+  /// Казахский — если телефон умеет его распознавать, иначе русский.
+  Future<String> _speechLocale() async {
+    if (currentLang == AppLang.kk) {
+      final locales = await _speech.locales();
+      final kk = locales.where(
+        (l) => l.localeId.toLowerCase().startsWith('kk'),
+      );
+      if (kk.isNotEmpty) return kk.first.localeId;
+    }
+    return 'ru_RU';
+  }
+
   final _materials = <MaterialLine>[];
   final _newPhotos = <XFile>[];
   RefItem? _fault;
@@ -54,7 +68,7 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
     );
     if (!ok) {
       if (mounted) {
-        showError(context, 'Распознавание речи недоступно на устройстве');
+        showError(context, tr('Распознавание речи недоступно на устройстве'));
       }
       return;
     }
@@ -62,7 +76,7 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
     setState(() => _listening = true);
     await _speech.listen(
       listenOptions: SpeechListenOptions(
-        localeId: 'ru_RU',
+        localeId: await _speechLocale(),
         partialResults: true,
         listenMode: ListenMode.dictation,
       ),
@@ -116,11 +130,11 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
         detail.photos.any((p) => p.isAfter) || _newPhotos.isNotEmpty;
     String? error;
     if (_report.text.trim().split(RegExp(r'\s+')).length < 5) {
-      error = 'Опишите выполненные работы (не менее 5 слов)';
+      error = tr('Опишите выполненные работы (не менее 5 слов)');
     } else if (_fault == null) {
-      error = 'Выберите шифр неисправности';
+      error = tr('Выберите шифр неисправности');
     } else if (detail.order.isEmergency && !hasAfter) {
-      error = 'Для внепланового наряда обязательно фото «после»';
+      error = tr('Для внепланового наряда обязательно фото «после»');
     }
     if (error != null) return showError(context, error);
 
@@ -144,8 +158,10 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
         SnackBar(
           content: Text(
             ai == null
-                ? 'Наряд исполнен'
-                : 'Наряд исполнен. ИИ-проверка: ${ai.verdictLabel}',
+                ? tr('Наряд исполнен')
+                : tr('Наряд исполнен. ИИ-проверка: {verdictLabel}', {
+                    'verdictLabel': ai.verdictLabel,
+                  }),
           ),
           backgroundColor: ai?.color,
         ),
@@ -164,7 +180,7 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
     final refs = ref.watch(referencesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Закрытие наряда')),
+      appBar: AppBar(title: Text(tr('Закрытие наряда'))),
       body: AsyncView(
         value: refs,
         data: (r) => AsyncView(
@@ -182,10 +198,10 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
                 minLines: 4,
                 maxLines: 10,
                 decoration: InputDecoration(
-                  labelText: 'Выполненные работы',
+                  labelText: tr('Выполненные работы'),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
-                    tooltip: 'Голосовой ввод',
+                    tooltip: tr('Голосовой ввод'),
                     icon: Icon(
                       _listening ? Icons.stop_circle : Icons.mic,
                       color: _listening ? Colors.red : null,
@@ -198,8 +214,8 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
               DropdownButtonFormField<RefItem>(
                 initialValue: _fault,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Шифр неисправности',
+                decoration: InputDecoration(
+                  labelText: tr('Шифр неисправности'),
                   border: OutlineInputBorder(),
                 ),
                 items: [
@@ -212,14 +228,14 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
               Row(
                 children: [
                   Text(
-                    'Материалы и запчасти',
+                    tr('Материалы и запчасти'),
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: () => _addMaterial(r.materials),
                     icon: const Icon(Icons.add),
-                    label: const Text('Добавить'),
+                    label: Text(tr('Добавить')),
                   ),
                 ],
               ),
@@ -257,8 +273,8 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
               const SizedBox(height: 16),
               Text(
                 d.order.isEmergency
-                    ? 'Фото «после» (обязательно)'
-                    : 'Фото «после»',
+                    ? tr('Фото «после» (обязательно)')
+                    : tr('Фото «после»'),
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
@@ -301,7 +317,7 @@ class _CloseOrderScreenState extends ConsumerState<CloseOrderScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.task_alt),
-                label: const Text('Исполнено'),
+                label: Text(tr('Исполнено')),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                 ),

@@ -6,6 +6,8 @@ import { ApiError } from './api/client'
 import App from './App'
 import { AuthProvider } from './auth/AuthContext'
 import { ToastProvider } from './components/Toasts'
+import { getLang } from './i18n/lang'
+import { LangProvider } from './i18n/LangProvider'
 import './styles.css'
 
 const queryClient = new QueryClient({
@@ -19,12 +21,16 @@ const queryClient = new QueryClient({
   },
 })
 
+document.documentElement.lang = getLang()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <App />
+          <LangProvider>
+            <App />
+          </LangProvider>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

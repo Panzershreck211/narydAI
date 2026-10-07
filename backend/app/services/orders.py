@@ -25,8 +25,13 @@ DETAIL_OPTIONS = (
 )
 
 
-async def load_order(db: AsyncSession, order_id: int, *, detail: bool = True) -> WorkOrder | None:
+async def load_order(db: AsyncSession, order_id: int, *, detail: bool = True, lock: bool = False) -> WorkOrder | None:
+    """lock=True — блокировка строки наряда до commit: двойное нажатие «Исполнено» или два
+    члена бригады, одновременно взявшие наряд, обрабатываются строго по очереди."""
     stmt = select(WorkOrder).where(WorkOrder.id == order_id).execution_options(populate_existing=True)
+    if lock:
+        # of=WorkOrder: у наряда есть LEFT JOIN-связи, а FOR UPDATE на них PostgreSQL не допускает
+        stmt = stmt.with_for_update(of=WorkOrder)
     if detail:
         stmt = stmt.options(*DETAIL_OPTIONS)
     return (await db.scalars(stmt)).unique().one_or_none()

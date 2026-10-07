@@ -1,11 +1,14 @@
+import '../../../core/i18n/i18n.dart';
+
 enum Role {
   master('Мастер смены'),
   executor('Исполнитель'),
   manager('Руководитель'),
   admin('Администратор');
 
-  const Role(this.label);
-  final String label;
+  const Role(this.labelRu);
+  final String labelRu;
+  String get label => tr(labelRu);
 
   static Role parse(String value) => Role.values.byName(value);
 }

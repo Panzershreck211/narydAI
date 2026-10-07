@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 
 from app.core.deps import DB, CurrentUser
+from app.core.i18n import Localized
 from app.models import Notification
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -16,19 +17,19 @@ class NotificationOut(BaseModel):
     id: int
     order_id: int | None
     kind: str
-    title: str
-    body: str
+    title: Localized
+    body: Localized
     is_emergency: bool
     is_read: bool
     created_at: datetime
 
 
 @router.get("", response_model=list[NotificationOut])
-async def my_notifications(db: DB, user: CurrentUser, unread_only: bool = False, limit: int = 50):
+async def my_notifications(db: DB, user: CurrentUser, unread_only: bool = False, limit: int = Query(default=50, ge=1, le=200)):
     stmt = select(Notification).where(Notification.user_id == user.id)
     if unread_only:
         stmt = stmt.where(Notification.is_read.is_(False))
-    return (await db.scalars(stmt.order_by(Notification.created_at.desc()).limit(min(limit, 200)))).all()
+    return (await db.scalars(stmt.order_by(Notification.created_at.desc()).limit(limit))).all()
 
 
 @router.post("/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)

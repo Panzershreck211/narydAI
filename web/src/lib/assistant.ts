@@ -1,4 +1,5 @@
 import { api, ApiError, tokens } from '../api/client'
+import { getLang, t } from '../i18n/lang'
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -21,16 +22,16 @@ export async function streamChat(
   signal?: AbortSignal,
 ): Promise<void> {
   const status = await api<{ configured: boolean }>('/assistant/status')
-  if (!status.configured) throw new ApiError(503, 'ИИ-помощник не подключён')
+  if (!status.configured) throw new ApiError(503, t('ИИ-помощник не подключён'))
 
   const res = await fetch('/api/v1/assistant/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens.access}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens.access}`, 'Accept-Language': getLang() },
     body: JSON.stringify({ messages }),
     signal,
   })
   if (!res.ok || !res.body) {
-    let message = `Ошибка помощника (${res.status})`
+    let message = t('Ошибка помощника ({status})', { status: res.status })
     try {
       const body = await res.json()
       if (typeof body.detail === 'string') message = body.detail

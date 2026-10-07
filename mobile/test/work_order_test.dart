@@ -76,17 +76,22 @@ void main() {
     expect(d.order.status, OrderStatus.inProgress);
     expect(d.order.isEmergency, isTrue);
     expect(d.order.isOverdue, isTrue);
-    expect(d.order.allowedActions, [
-      OrderAction.pause,
-      OrderAction.complete,
-      OrderAction.returnBack,
-    ]);
+    // действия мастера («return») и неизвестные — в приложении исполнителя не показываются
+    expect(d.order.allowedActions, [OrderAction.pause, OrderAction.complete]);
     expect(d.photos.single.isAfter, isTrue);
     expect(d.aiReport!.verdictLabel, 'Нужна проверка');
     expect(d.events.single.toStatus, OrderStatus.issued);
   });
 
-  test('return action maps to API name', () {
-    expect(OrderAction.returnBack.apiName, 'return');
+  test('в приложении только действия исполнителя', () {
+    expect(OrderAction.values.map((a) => a.name), [
+      'accept',
+      'queue',
+      'reject',
+      'start',
+      'pause',
+      'complete',
+    ]);
+    expect(OrderAction.tryParse('approve'), isNull);
   });
 }

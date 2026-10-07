@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNotifications, useReadNotification } from '../api/hooks'
 import { fmtDateTime } from '../lib/labels'
 import { useOpenOrder } from '../lib/useOpenOrder'
+import { t } from '../i18n/lang'
+import { Empty } from './ui'
 
 export function NotificationsBell() {
   const { data = [] } = useNotifications()
@@ -24,7 +26,7 @@ export function NotificationsBell() {
       <button
         type="button"
         className="icon-btn"
-        aria-label={`Уведомления${unread ? `: ${unread} новых` : ''}`}
+        aria-label={unread ? t('Уведомления: {n} новых', { n: unread }) : t('Уведомления')}
         onClick={() => setOpen(!open)}
       >
         🔔{unread > 0 && <span className="bell__count">{unread > 99 ? '99+' : unread}</span>}
@@ -32,14 +34,14 @@ export function NotificationsBell() {
       {open && (
         <div className="bell__panel">
           <div className="bell__head">
-            <b>Уведомления</b>
+            <b>{t('Уведомления')}</b>
             {unread > 0 && (
               <button type="button" className="link" onClick={() => read.all.mutate()}>
-                Прочитать все
+                {t('Прочитать все')}
               </button>
             )}
           </div>
-          {data.length === 0 && <div className="empty">Уведомлений нет</div>}
+          {data.length === 0 && <Empty>{t('Уведомлений нет')}</Empty>}
           <ul>
             {data.map((n) => (
               <li key={n.id}>

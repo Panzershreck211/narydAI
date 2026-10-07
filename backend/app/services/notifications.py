@@ -74,7 +74,3 @@ async def deliver_outbox(db: AsyncSession) -> None:
             {"kind": n["kind"], "order_id": str(n["order_id"] or "")},
             n["is_emergency"],
         )
-
-
-def discard_outbox(db: AsyncSession) -> None:
-    db.info.pop(OUTBOX, None)

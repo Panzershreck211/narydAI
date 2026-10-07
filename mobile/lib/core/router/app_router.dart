@@ -2,47 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/admin/presentation/admin_screen.dart';
+import '../../features/assistant/presentation/assistant_screen.dart';
 import '../../features/auth/application/auth_controller.dart';
-import '../../features/auth/domain/app_user.dart';
 import '../../features/auth/presentation/login_screen.dart';
-import '../../features/manager/presentation/analytics_screen.dart';
-import '../../features/master/presentation/board_screen.dart';
-import '../../features/master/presentation/create_order_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/orders/presentation/close_order_screen.dart';
 import '../../features/orders/presentation/my_orders_screen.dart';
 import '../../features/orders/presentation/order_detail_screen.dart';
+import '../i18n/i18n.dart';
 
-/// Стартовый экран для роли.
-String homeFor(Role role) => switch (role) {
-  Role.executor => '/orders',
-  Role.master => '/board',
-  Role.manager => '/analytics',
-  Role.admin => '/admin',
-};
-
-/// Какие разделы доступны роли (дублирует RBAC бэкенда на уровне UI).
-bool _allowed(Role role, String path) {
-  if (path.startsWith('/notifications')) return true;
-  if (RegExp(r'^/orders/\d+$').hasMatch(path)) {
-    return true; // карточка — всем, права проверит API
-  }
-  return switch (role) {
-    Role.executor => path.startsWith('/orders'),
-    Role.master => path.startsWith('/board'),
-    Role.manager => path.startsWith('/analytics'),
-    Role.admin => path.startsWith('/admin'),
-  };
-}
+/// Приложение — только для исполнителей: мастер, руководитель и администратор работают в веб-панели.
+bool _allowed(String path) =>
+    path.startsWith('/orders') ||
+    path.startsWith('/notifications') ||
+    path == '/assistant';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  // Смена языка — новый роутер, и все экраны строятся заново. Иначе навигатор (у него
+  // GlobalKey) переносится в дерево целиком, и неизменяемые (const) виджеты вроде кнопки
+  // «Помощник» остаются на прежнем языке. Язык меняют только на корневых экранах
+  // (вход, «Мои наряды»), так что начать с /splash → redirect ничего не теряет.
+  ref.watch(langProvider);
+
   // Мост Riverpod → GoRouter: пересчитывать redirect при смене сессии
   final refresh = ValueNotifier(0);
   ref.listen(authControllerProvider, (_, _) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
     redirect: (context, state) {
@@ -54,8 +41,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return path == '/splash' ? null : '/splash';
       }
       if (user == null) return path == '/login' ? null : '/login';
-      if (path == '/login' || path == '/splash') return homeFor(user.role);
-      return _allowed(user.role, path) ? null : homeFor(user.role);
+      if (path == '/login' || path == '/splash') return '/orders';
+      return _allowed(path) ? null : '/orders';
     },
     routes: [
       GoRoute(
@@ -78,18 +65,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
-        path: '/board',
-        builder: (_, _) => const BoardScreen(),
-        routes: [
-          GoRoute(path: 'new', builder: (_, _) => const CreateOrderScreen()),
-        ],
-      ),
-      GoRoute(path: '/analytics', builder: (_, _) => const AnalyticsScreen()),
-      GoRoute(path: '/admin', builder: (_, _) => const AdminScreen()),
-      GoRoute(
         path: '/notifications',
         builder: (_, _) => const NotificationsScreen(),
       ),
+      GoRoute(path: '/assistant', builder: (_, _) => const AssistantScreen()),
     ],
   );
+  ref.onDispose(router.dispose);
+  return router;
 });

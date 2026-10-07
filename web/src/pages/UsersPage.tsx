@@ -6,6 +6,7 @@ import { useUser } from '../auth/useAuth'
 import { useToast } from '../components/useToast'
 import { ErrorBox, Field, Modal, Spinner } from '../components/ui'
 import { ROLE } from '../lib/labels'
+import { t } from '../i18n/lang'
 
 export function UsersPage() {
   const me = useUser()
@@ -34,23 +35,23 @@ export function UsersPage() {
   const toggleActive = (u: User) =>
     update.mutate(
       { id: u.id, is_active: !u.is_active },
-      { onSuccess: () => toast.success(u.is_active ? 'Учётная запись заблокирована' : 'Учётная запись восстановлена'), onError: toast.error },
+      { onSuccess: () => toast.success(u.is_active ? t('Учётная запись заблокирована') : t('Учётная запись восстановлена')), onError: toast.error },
     )
 
   return (
     <div>
       <div className="page-head">
-        <h1>Сотрудники</h1>
+        <h1>{t('Сотрудники')}</h1>
         <div className="page-head__spacer" />
         <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
-          + Зарегистрировать
+          {t('+ Зарегистрировать')}
         </button>
       </div>
 
       <div className="filters">
-        <input type="search" placeholder="ФИО или табельный номер" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={role} onChange={(e) => setRole(e.target.value as Role | '')} aria-label="Роль">
-          <option value="">Все роли</option>
+        <input type="search" placeholder={t('ФИО или табельный номер')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select value={role} onChange={(e) => setRole(e.target.value as Role | '')} aria-label={t('Роль')}>
+          <option value="">{t('Все роли')}</option>
           {Object.entries(ROLE).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -59,7 +60,7 @@ export function UsersPage() {
         </select>
         <label className="check">
           <input type="checkbox" checked={showBlocked} onChange={(e) => setShowBlocked(e.target.checked)} />
-          Показать заблокированных
+          {t('Показать заблокированных')}
         </label>
       </div>
 
@@ -70,14 +71,14 @@ export function UsersPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>ФИО</th>
-                <th>Логин</th>
-                <th>Роль</th>
-                <th>Специальность</th>
-                <th className="num">Разряд</th>
-                <th>Бригада</th>
-                <th>Смена</th>
-                <th>ПИН</th>
+                <th>{t('ФИО')}</th>
+                <th>{t('Логин')}</th>
+                <th>{t('Роль')}</th>
+                <th>{t('Специальность')}</th>
+                <th className="num">{t('Разряд')}</th>
+                <th>{t('Бригада')}</th>
+                <th>{t('Смена')}</th>
+                <th>{t('ПИН')}</th>
                 <th />
               </tr>
             </thead>
@@ -86,7 +87,7 @@ export function UsersPage() {
                 <tr key={u.id} className={u.is_active ? undefined : 'row--muted'}>
                   <td>
                     {u.fio}
-                    {!u.is_active && <span className="tag">заблокирован</span>}
+                    {!u.is_active && <span className="tag">{t('заблокирован')}</span>}
                   </td>
                   <td className="mono">{u.login}</td>
                   <td>{ROLE[u.role]}</td>
@@ -94,20 +95,20 @@ export function UsersPage() {
                   <td className="num">{u.grade ?? '—'}</td>
                   <td>{brigadeName(u.brigade_id)}</td>
                   <td>
-                    {u.shift === 'day' ? 'Дневная' : u.shift === 'night' ? 'Ночная' : '—'}
-                    {u.on_shift && <span className="tag tag--green">на смене</span>}
+                    {u.shift === 'day' ? t('Дневная') : u.shift === 'night' ? t('Ночная') : '—'}
+                    {u.on_shift && <span className="tag tag--green">{t('на смене')}</span>}
                   </td>
                   <td>{u.has_pin ? '✓' : ''}</td>
                   <td className="actions">
                     <button type="button" className="link" onClick={() => setEditing(u)}>
-                      Изменить
+                      {t('Изменить')}
                     </button>
                     <button type="button" className="link" onClick={() => setResetting(u)}>
-                      Пароль
+                      {t('Пароль')}
                     </button>
                     {u.id !== me.id && (
                       <button type="button" className="link link--danger" onClick={() => toggleActive(u)}>
-                        {u.is_active ? 'Блок.' : 'Разблок.'}
+                        {u.is_active ? t('Блок.') : t('Разблок.')}
                       </button>
                     )}
                   </td>
@@ -147,11 +148,12 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
       fio: f.fio.trim(),
       role: f.role,
       specialty: f.specialty.trim() || null,
-      grade: f.grade ? Number(f.grade) : null,
+      // разряд есть только у исполнителей: при смене роли поле блокируется — и не сохраняется
+      grade: f.role === 'executor' && f.grade ? Number(f.grade) : null,
       brigade_id: f.brigade_id ? Number(f.brigade_id) : null,
       shift: f.shift || null,
     }
-    const opts = { onSuccess: () => (toast.success(user ? 'Сохранено' : 'Сотрудник зарегистрирован'), onClose()), onError: toast.error }
+    const opts = { onSuccess: () => (toast.success(user ? t('Сохранено') : t('Сотрудник зарегистрирован')), onClose()), onError: toast.error }
     if (user) update.mutate({ id: user.id, ...common }, opts)
     else create.mutate({ ...common, login: f.login.trim(), password: f.password, pin: f.pin || null }, opts)
   }
@@ -159,35 +161,35 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
   const isExecutor = f.role === 'executor'
   return (
     <Modal
-      title={user ? `Сотрудник: ${user.fio}` : 'Регистрация сотрудника'}
+      title={user ? t('Сотрудник: {fio}', { fio: user.fio }) : t('Регистрация сотрудника')}
       onClose={onClose}
       footer={
         <>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button type="submit" form="user-form" className="btn btn--primary" disabled={create.isPending || update.isPending}>
-            {user ? 'Сохранить' : 'Зарегистрировать'}
+            {user ? t('Сохранить') : t('Зарегистрировать')}
           </button>
         </>
       }
     >
       <form id="user-form" className="form" onSubmit={submit}>
-        <Field label="ФИО">
+        <Field label={t('ФИО')}>
           <input value={f.fio} onChange={set('fio')} required minLength={3} autoFocus />
         </Field>
         {!user && (
           <div className="form__row">
-            <Field label="Логин / табельный номер" hint="латиница, цифры, . _ -">
+            <Field label={t('Логин / табельный номер')} hint={t('латиница, цифры, . _ -')}>
               <input value={f.login} onChange={set('login')} required minLength={3} pattern="[A-Za-z0-9_.\-]+" />
             </Field>
-            <Field label="Пароль" hint="не короче 8 символов">
+            <Field label={t('Пароль')} hint={t('не короче 8 символов')}>
               <input type="password" value={f.password} onChange={set('password')} required minLength={8} autoComplete="new-password" />
             </Field>
           </div>
         )}
         <div className="form__row">
-          <Field label="Роль">
+          <Field label={t('Роль')}>
             <select value={f.role} onChange={set('role')}>
               {Object.entries(ROLE).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -196,17 +198,17 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
               ))}
             </select>
           </Field>
-          <Field label="Специальность">
-            <input value={f.specialty} onChange={set('specialty')} placeholder="Слесарь-ремонтник" list="specialties" />
+          <Field label={t('Специальность')}>
+            <input value={f.specialty} onChange={set('specialty')} placeholder={t('Слесарь-ремонтник')} list="specialties" />
             <datalist id="specialties">
-              {['Слесарь-ремонтник', 'Электромонтёр', 'Электрогазосварщик', 'Слесарь КИПиА', 'Машинист', 'Мастер смены'].map((s) => (
+              {[t('Слесарь-ремонтник'), t('Электромонтёр'), t('Электрогазосварщик'), t('Слесарь КИПиА'), t('Машинист'), t('Мастер смены')].map((s) => (
                 <option key={s} value={s} />
               ))}
             </datalist>
           </Field>
         </div>
         <div className="form__row form__row--3">
-          <Field label="Разряд">
+          <Field label={t('Разряд')}>
             <select value={f.grade} onChange={set('grade')} disabled={!isExecutor}>
               <option value="">—</option>
               {[1, 2, 3, 4, 5, 6].map((g) => (
@@ -216,7 +218,7 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
               ))}
             </select>
           </Field>
-          <Field label="Бригада">
+          <Field label={t('Бригада')}>
             <select value={f.brigade_id} onChange={set('brigade_id')}>
               <option value="">—</option>
               {brigades.data?.map((b) => (
@@ -226,16 +228,16 @@ function UserDialog({ user, onClose }: { user: User | null; onClose: () => void 
               ))}
             </select>
           </Field>
-          <Field label="Смена">
+          <Field label={t('Смена')}>
             <select value={f.shift} onChange={set('shift')}>
               <option value="">—</option>
-              <option value="day">Дневная</option>
-              <option value="night">Ночная</option>
+              <option value="day">{t('Дневная')}</option>
+              <option value="night">{t('Ночная')}</option>
             </select>
           </Field>
         </div>
         {!user && isExecutor && (
-          <Field label="ПИН для быстрого входа" hint="4–6 цифр, можно задать позже">
+          <Field label={t('ПИН для быстрого входа')} hint={t('4–6 цифр, можно задать позже')}>
             <input value={f.pin} onChange={set('pin')} pattern="\d{4,6}" inputMode="numeric" autoComplete="off" />
           </Field>
         )}
@@ -251,15 +253,15 @@ function ResetDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const [pin, setPin] = useState('')
   return (
     <Modal
-      title={`Сброс пароля: ${user.fio}`}
+      title={t('Сброс пароля: {fio}', { fio: user.fio })}
       onClose={onClose}
       footer={
         <>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </button>
           <button type="submit" form="reset-form" className="btn btn--primary" disabled={resetPassword.isPending}>
-            Сохранить
+            {t('Сохранить')}
           </button>
         </>
       }
@@ -271,14 +273,14 @@ function ResetDialog({ user, onClose }: { user: User; onClose: () => void }) {
           e.preventDefault()
           resetPassword.mutate(
             { id: user.id, password, pin },
-            { onSuccess: () => (toast.success('Пароль изменён, блокировка ПИН снята'), onClose()), onError: toast.error },
+            { onSuccess: () => (toast.success(t('Пароль изменён, блокировка ПИН снята')), onClose()), onError: toast.error },
           )
         }}
       >
-        <Field label="Новый пароль" hint="не короче 8 символов">
+        <Field label={t('Новый пароль')} hint={t('не короче 8 символов')}>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" autoFocus />
         </Field>
-        <Field label="Новый ПИН (необязательно)">
+        <Field label={t('Новый ПИН (необязательно)')}>
           <input value={pin} onChange={(e) => setPin(e.target.value)} pattern="\d{4,6}" inputMode="numeric" autoComplete="off" />
         </Field>
       </form>
