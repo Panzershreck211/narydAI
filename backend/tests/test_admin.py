@@ -229,3 +229,22 @@ async def test_create_admin_command(client, h):
     for login, fio, pwd in [("ab", "Иванов", "Password#1"), ("new-x", "Иванов", "short"), ("new-y", None, "Password#1")]:
         with pytest.raises(ValueError):
             await create_admin(login, fio, pwd)
+
+
+async def test_connection_settings_for_phone(client, h, monkeypatch):
+    from app.core.config import settings
+
+    # IP передаёт скрипт запуска; повторы и пробелы отбрасываются
+    monkeypatch.setattr(settings, "server_lan_ips", " 192.168.1.5,10.0.0.7, 192.168.1.5 ,")
+    monkeypatch.setattr(settings, "web_port", 9080)
+    r = await client.get(f"{API}/settings/connection", headers=await h("admin"))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"lan_ips": ["192.168.1.5", "10.0.0.7"], "web_port": 9080}
+
+    monkeypatch.setattr(settings, "server_lan_ips", "")
+    assert (await client.get(f"{API}/settings/connection", headers=await h("admin"))).json()["lan_ips"] == []
+
+    # адрес сети видит только администратор
+    for login in ("master1", "boss", "1001"):
+        assert (await client.get(f"{API}/settings/connection", headers=await h(login))).status_code == 403
+    assert (await client.get(f"{API}/settings/connection")).status_code == 401

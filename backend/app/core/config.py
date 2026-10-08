@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # Push (FCM). Без файла сервисного аккаунта пуши только логируются.
     fcm_credentials_file: Path | None = None
 
+    # Адрес для мобильного приложения: IP компьютера через запятую (передаёт start.bat / start.sh)
+    # и порт панели, через которую телефон ходит в API
+    server_lan_ips: str = ""
+    web_port: int = 8080
+
 
 @lru_cache
 def get_settings() -> Settings:

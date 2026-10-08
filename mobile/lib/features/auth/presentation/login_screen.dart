@@ -1,7 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api/api_client.dart';
 import '../../../core/api/api_error.dart';
+import '../../../core/config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/theme/app_theme.dart';
 import '../application/auth_controller.dart';
@@ -19,7 +22,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _login = TextEditingController();
   final _password = TextEditingController();
   final _pin = TextEditingController();
+  final _server = TextEditingController();
   bool _pinMode = true;
+  bool _serverEditing = false;
+  bool _serverChecking = false;
+  String? _serverError;
 
   @override
   void initState() {
@@ -34,7 +41,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _login.dispose();
     _password.dispose();
     _pin.dispose();
+    _server.dispose();
     super.dispose();
+  }
+
+  static bool _isNetworkError(Object? e) =>
+      e is DioException &&
+      e.response == null &&
+      e.type != DioExceptionType.cancel &&
+      e.type != DioExceptionType.badCertificate;
+
+  void _editServer() => setState(() {
+    _server.text = AppConfig.apiUrl;
+    _serverError = null;
+    _serverEditing = true;
+  });
+
+  /// Проверяет, что по адресу отвечает НарядAI, и только тогда сохраняет его.
+  Future<void> _saveServer() async {
+    final url = AppConfig.normalize(_server.text);
+    if (url == null) {
+      setState(() => _serverError = tr('Неверный адрес сервера'));
+      return;
+    }
+    setState(() {
+      _serverChecking = true;
+      _serverError = null;
+    });
+    try {
+      await Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      ).get('$url${AppConfig.apiPrefix}/setup/status');
+      await AppConfig.saveServerUrl(url);
+      ref.read(apiClientProvider).useCurrentServer();
+      if (mounted) setState(() => _serverEditing = false);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _serverError = tr('Сервер не найден по адресу {url}', {
+            'url': url,
+          }),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _serverChecking = false);
+    }
   }
 
   void _submit() {
@@ -50,6 +104,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
     final error = state.hasError ? ApiError.from(state.error!).message : null;
+    // нет связи с сервером — сразу предлагаем проверить адрес
+    ref.listen(authControllerProvider, (_, next) {
+      if (next.hasError && _isNetworkError(next.error) && !_serverEditing) {
+        _editServer();
+      }
+    });
 
     final c = context.colors;
     Widget label(String t) => Padding(
@@ -171,6 +231,74 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               )
                             : Text(tr('Войти')),
                       ),
+                      const SizedBox(height: 14),
+                      if (!_serverEditing)
+                        Row(
+                          children: [
+                            Icon(Icons.dns_outlined, size: 16, color: c.muted),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                tr('Сервер: {url}', {'url': AppConfig.apiUrl}),
+                                style: TextStyle(color: c.muted, fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _editServer,
+                              child: Text(tr('Изменить')),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        label(tr('Адрес сервера')),
+                        TextField(
+                          controller: _server,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          decoration: InputDecoration(
+                            hintText: '192.168.1.5',
+                            helperText: tr(
+                              'IP компьютера из окна запуска — порт 8080 подставится сам',
+                            ),
+                            helperMaxLines: 2,
+                          ),
+                          onSubmitted: (_) => _saveServer(),
+                        ),
+                        if (_serverError != null) ...[
+                          const SizedBox(height: 8),
+                          Text(_serverError!, style: TextStyle(color: c.red)),
+                        ],
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _serverChecking
+                                    ? null
+                                    : () => setState(
+                                        () => _serverEditing = false,
+                                      ),
+                                child: Text(tr('Отмена')),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: FilledButton.tonal(
+                                onPressed: _serverChecking ? null : _saveServer,
+                                child: _serverChecking
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(tr('Проверить и сохранить')),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

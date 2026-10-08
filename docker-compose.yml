@@ -29,6 +29,9 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://naryad:${POSTGRES_PASSWORD:-naryad}@db:5432/naryad
+      # для «Настройки → Подключение мобильного приложения»: IP компьютера передаёт start.bat / start.sh
+      SERVER_LAN_IPS: ${SERVER_LAN_IPS:-}
+      WEB_PORT: ${WEB_PORT:-8080}
     ports: ["127.0.0.1:${API_PORT:-8000}:8000"]
     volumes: [media:/app/media]
     depends_on:

@@ -13,6 +13,91 @@ interface AssistantSettings {
   model: string
 }
 
+interface ConnectionInfo {
+  lan_ips: string[]
+  web_port: number
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+/** Приложение само подставляет порт 8080 — тогда достаточно IP. */
+const phoneAddress = (host: string, port: number) => (port === 8080 ? host : `${host}:${port}`)
+
+/** Адреса, которые можно ввести в мобильном приложении: IP от скрипта запуска + адрес, по которому открыта панель. */
+function phoneAddresses(info: ConnectionInfo | undefined): string[] {
+  const list = (info?.lan_ips ?? []).map((ip) => phoneAddress(ip, info!.web_port))
+  const { hostname, port, protocol } = window.location
+  if (!LOCAL_HOSTS.has(hostname)) {
+    list.push(phoneAddress(hostname, Number(port) || (protocol === 'https:' ? 443 : 80)))
+  }
+  return [...new Set(list)]
+}
+
+/** navigator.clipboard работает только на https и localhost — на http по IP копируем через выделение. */
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = text
+    document.body.appendChild(area)
+    area.select()
+    document.execCommand('copy')
+    area.remove()
+  }
+}
+
+/** Какой адрес ввести в мобильном приложении («Сервер → Изменить» на экране входа). */
+function PhoneConnection() {
+  const toast = useToast()
+  const info = useQuery({
+    queryKey: ['settings', 'connection'],
+    queryFn: () => api<ConnectionInfo>('/settings/connection'),
+  })
+  const addresses = phoneAddresses(info.data)
+
+  return (
+    <section className="panel">
+      <h2>{t('📱 Подключение мобильного приложения')}</h2>
+      <p className="muted">
+        {t('Исполнители работают в приложении на телефоне. Телефон должен быть в той же Wi-Fi сети, что и этот компьютер.')}
+      </p>
+
+      {info.isPending && <Spinner />}
+      {info.error && <ErrorBox error={info.error} onRetry={info.refetch} />}
+      {info.isSuccess &&
+        (addresses.length > 0 ? (
+          <div className="connect__list">
+            {addresses.map((addr) => (
+              <div key={addr} className="connect__addr">
+                <span className="mono">{addr}</span>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => copyText(addr).then(() => toast.success(t('Адрес скопирован')))}
+                >
+                  {t('Копировать')}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="callout callout--warn">
+            {t('IP этого компьютера неизвестен: запустите систему через start.bat (Windows) или start.sh (Linux, macOS) или узнайте IP командой ipconfig.')}
+          </div>
+        ))}
+
+      <ol className="connect__steps">
+        <li>{tRich('В приложении на экране входа нажмите {change} в строке «Сервер».', { change: <b>{t('Изменить')}</b> })}</li>
+        <li>{t('Введите адрес выше в поле «Адрес сервера».')}</li>
+        <li>{tRich('Нажмите {save} и войдите.', { save: <b>{t('Проверить и сохранить')}</b> })}</li>
+      </ol>
+      <p className="muted small">
+        {t('Android-эмулятор на этом компьютере подключается сам — вводить ничего не нужно. Сменилась Wi-Fi сеть — перезапустите start.bat, адрес обновится.')}
+      </p>
+    </section>
+  )
+}
+
 /** Настройки системы, которые администратор меняет без правки файлов. */
 export function SettingsPage() {
   const qc = useQueryClient()
@@ -55,6 +140,8 @@ export function SettingsPage() {
       <div className="page-head">
         <h1>{t('Настройки')}</h1>
       </div>
+
+      <PhoneConnection />
 
       <section className="panel">
         <h2>{t('✦ ИИ-помощник и ИИ-проверка нарядов')}</h2>

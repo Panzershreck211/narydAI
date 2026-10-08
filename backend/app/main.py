@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1 import (
     assistant,
     auth,
+    connection,
     dashboard,
     notifications,
     orders,
@@ -108,6 +109,7 @@ for r in (
     dashboard.router,
     notifications.router,
     assistant.router,
+    connection.router,
 ):
     app.include_router(r, prefix=settings.api_prefix)
 app.include_router(ws.router)

@@ -29,6 +29,11 @@ class ApiClient {
   /// Устанавливается AuthController-ом: разлогинить пользователя.
   void Function()? onSessionExpired;
 
+  /// Переключает запросы на текущий [AppConfig.apiUrl] (после смены адреса на экране входа).
+  void useCurrentServer() {
+    dio.options.baseUrl = '${AppConfig.apiUrl}${AppConfig.apiPrefix}';
+  }
+
   Future<void> _onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
