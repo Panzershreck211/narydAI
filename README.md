@@ -70,7 +70,10 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt
 
 ### Мобильное приложение (Android)
 
-**Готового APK в репозитории нет** — его собирают из исходников. Нужны Flutter 3.38 и Android SDK.
+**Готовый APK:** [`apk/naryad-ai.apk`](apk/naryad-ai.apk) — скачайте, скопируйте на телефон и установите
+(Android попросит разрешить установку из этого источника). Подходит и для телефона, и для эмулятора.
+
+Собрать APK из исходников самому (нужны Flutter 3.38 и Android SDK):
 
 ```powershell
 cd mobile
