@@ -104,8 +104,10 @@ $dbPort  = Select-Port 'DB_PORT' 5432
 Write-Host "  панель :$webPort   API :$apiPort   PostgreSQL :$dbPort"
 
 # IP компьютера в локальной сети — панель покажет его в «Настройки → Подключение мобильного приложения»
+# сначала настоящие адаптеры (Wi-Fi, Ethernet), затем виртуальные сети (ZeroTier, VPN, Hyper-V)
 $lanIps = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue |
     Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
+    Sort-Object { -not $_.NetAdapter.HardwareInterface } |
     ForEach-Object { $_.IPv4Address.IPAddress } | Select-Object -Unique)
 $env:SERVER_LAN_IPS = $lanIps -join ','
 $lan = $lanIps | Select-Object -First 1

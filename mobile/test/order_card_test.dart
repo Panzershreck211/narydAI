@@ -8,6 +8,7 @@ import 'package:naryad_ai/features/orders/presentation/widgets/order_card.dart';
 WorkOrder _order({
   String type = 'planned',
   bool overdue = false,
+  String status = 'issued',
   Map<String, dynamic>? executor,
 }) => WorkOrder.fromJson({
   'id': 3,
@@ -23,7 +24,7 @@ WorkOrder _order({
       .add(Duration(hours: overdue ? -1 : 3))
       .toUtc()
       .toIso8601String(),
-  'status': 'issued',
+  'status': status,
   'is_overdue': overdue,
   'equipment_stopped': false,
   'created_at': '2026-10-05T10:00:00Z',
@@ -73,6 +74,16 @@ void main() {
           w.constraints?.maxWidth == 4,
     );
     expect(strip, findsOneWidget);
+  });
+
+  testWidgets('у завершённых и отменённых нарядов нет обратного отсчёта', (
+    tester,
+  ) async {
+    for (final status in ['completed', 'closed', 'cancelled', 'rejected']) {
+      await _pump(tester, _order(status: status));
+      expect(find.textContaining('осталось'), findsNothing, reason: status);
+      expect(find.textContaining('до '), findsOneWidget, reason: status);
+    }
   });
 
   testWidgets('тап открывает наряд', (tester) async {

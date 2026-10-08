@@ -19,7 +19,8 @@ for arg in "$@"; do
 done
 
 step() { printf '\n\033[36m==> %s\033[0m\n' "$1"; }
-fail() { printf '\n\033[31mОШИБКА: %s\033[0m\n' "$1"; exit 1; }
+# в stderr: fail вызывается и внутри $(pick_port …), где stdout перехватывается
+fail() { printf '\n\033[31mОШИБКА: %s\033[0m\n' "$1" >&2; exit 1; }
 
 # ---------- 1. Docker ----------
 step "Проверяю Docker"

@@ -99,9 +99,8 @@ class OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final done =
-        order.status == OrderStatus.completed ||
-        order.status == OrderStatus.closed;
+    // исполненные, принятые, отменённые и отклонённые — без обратного отсчёта, только срок
+    final done = !order.status.isActive;
     final bg = order.isOverdue
         ? Color.alphaBlend(c.redSoft.withValues(alpha: 0.6), c.surface)
         : c.surface;
